@@ -1,0 +1,17 @@
+{
+  "name": "massive-ecs-game",
+  "version-string": "0.1.0",
+  "dependencies": [
+    {
+      "name": "sfml",
+      "features": [
+        "graphics",
+        "window",
+        "audio"
+      ]
+    },
+    "entt",
+    "taskflow",
+    "nlohmann-json"
+  ]
+}

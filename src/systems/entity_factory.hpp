@@ -1,0 +1,61 @@
+#pragma once
+#include <entt/entt.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <string>
+#include <map>
+#include "../components/unit_components.hpp"
+#include "config_manager.hpp"
+
+class EntityFactory {
+public:
+    static entt::entity createStatue(entt::registry& registry, sf::Vector2f position, const config::StatueConfig& cfg) {
+        auto entity = registry.create();
+        // [LEGACY] Radius is no longer used for Statue collision, using BoxCollider instead
+        registry.emplace<component::Transform>(entity, position, 0.f, 0.f);
+        registry.emplace<component::StatueStats>(entity, cfg.maxHealth, cfg.maxHealth, cfg.hpRegen, cfg.armor);
+        registry.emplace<component::StatueTag>(entity);
+        registry.emplace<component::BoxCollider>(entity, cfg.boxSize, cfg.boxOffset);
+        
+        auto& spriteData = registry.emplace<component::SpriteData>(entity);
+        spriteData.textureID = component::TextureID::Statue;
+        spriteData.textureName = "Statue";
+        spriteData.scale = {cfg.scale, cfg.scale};
+        
+        return entity;
+    }
+
+    static entt::entity createEnemy(entt::registry& registry, sf::Vector2f position, const std::string& typeName, const config::ConfigManager& configMgr) {
+        auto it = configMgr.enemies.find(typeName);
+        if (it == configMgr.enemies.end()) return entt::null;
+
+        const auto& cfg = it->second;
+        auto entity = registry.create();
+        
+        registry.emplace<component::Transform>(entity, position, cfg.radius);
+        registry.emplace<component::UnitStats>(entity, cfg.maxHealth, cfg.maxHealth, cfg.speed, cfg.damage, cfg.attackSpeed, cfg.attackRange);
+        registry.emplace<component::EnemyTag>(entity);
+        registry.emplace<component::Velocity>(entity, sf::Vector2f(0.f, 0.f));
+        
+        auto& sprite = registry.emplace<component::SpriteData>(entity);
+        sprite.textureID = component::TextureID::FallbackRedSquare; // [TEMPORARY] Force Red Square
+        sprite.textureName = cfg.name;
+        sprite.scale = {cfg.scale, cfg.scale}; // Applied directly from config
+
+        return entity;
+    }
+
+    static entt::entity createPlayerUnit(entt::registry& registry, sf::Vector2f position, const std::string& typeName) {
+        auto entity = registry.create();
+        registry.emplace<component::Transform>(entity, position, 10.f);
+        registry.emplace<component::UnitStats>(entity, 100.f, 100.f, 80.f, 15.f, 1.2f, 30.f);
+        registry.emplace<component::PlayerUnitTag>(entity);
+        registry.emplace<component::Velocity>(entity, sf::Vector2f(0.f, 0.f));
+        
+        auto& sprite = registry.emplace<component::SpriteData>(entity);
+        sprite.textureID = component::TextureID::Knight;
+        sprite.textureName = "Knight"; 
+        sprite.scale = {0.15f, 0.15f};
+
+        return entity;
+    }
+};

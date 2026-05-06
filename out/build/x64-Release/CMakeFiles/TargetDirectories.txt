@@ -1,0 +1,3 @@
+C:/CardAndStatue/out/build/x64-Release/CMakeFiles/MassiveECSGame.dir
+C:/CardAndStatue/out/build/x64-Release/CMakeFiles/edit_cache.dir
+C:/CardAndStatue/out/build/x64-Release/CMakeFiles/rebuild_cache.dir

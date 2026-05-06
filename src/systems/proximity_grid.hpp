@@ -48,5 +48,10 @@ public:
     }
 
 private:
-    std::array<std::vector<entt::entity>, GRID_SIZE * GRID_SIZE> m_cells;
+    std::vector<std::vector<entt::entity>> m_cells;
+
+public:
+    ProximityGrid() {
+        m_cells.resize(GRID_SIZE * GRID_SIZE);
+    }
 };

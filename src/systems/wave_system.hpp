@@ -29,39 +29,31 @@ public:
 
         const auto& currentWave = m_waveConfigs[currentWaveIndex];
 
-        switch (m_state) {
-            case State::Spawning:
-                m_timer -= deltaTime;
-                if (m_timer <= 0.f) {
-                    spawnGroup(registry, center, currentWave, configMgr);
-                    
-                    if (enemiesSpawnedThisWave >= currentWave.totalEnemies) {
-                        m_state = State::WaitingForClear;
-                    } else {
-                        prepareNextGroup(currentWave);
-                    }
+        if (m_state == State::Spawning) {
+            m_timer -= deltaTime;
+            if (m_timer <= 0.f) {
+                spawnGroup(registry, center, currentWave, configMgr);
+                
+                if (enemiesSpawnedThisWave >= currentWave.totalEnemies) {
+                    m_state = State::WaitingForClear;
+                } else {
+                    prepareNextGroup(currentWave);
                 }
-                break;
-
-            case State::WaitingForClear:
-                {
-                    auto enemyView = registry.view<component::EnemyTag>();
-                    if (enemyView.begin() == enemyView.end()) {
-                        currentWaveIndex++;
-                        if (currentWaveIndex < m_waveConfigs.size()) {
-                            m_timer = m_waveConfigs[currentWaveIndex].waveWaitTime;
-                            m_state = State::WaveCooledDown;
-                        }
-                    }
+            }
+        } else if (m_state == State::WaitingForClear) {
+            auto& storage = registry.storage<component::EnemyTag>();
+            if (storage.empty()) {
+                currentWaveIndex++;
+                if (currentWaveIndex < m_waveConfigs.size()) {
+                    m_timer = m_waveConfigs[currentWaveIndex].waveWaitTime;
+                    m_state = State::WaveCooledDown;
                 }
-                break;
-
-            case State::WaveCooledDown:
-                m_timer -= deltaTime;
-                if (m_timer <= 0.f) {
-                    startWave(currentWaveIndex);
-                }
-                break;
+            }
+        } else if (m_state == State::WaveCooledDown) {
+            m_timer -= deltaTime;
+            if (m_timer <= 0.f) {
+                startWave(currentWaveIndex);
+            }
         }
     }
 

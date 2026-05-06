@@ -18,8 +18,11 @@ public:
         sf::String name;
         sf::Vector2f position;
         sf::Vector2f size;
-        float rotation; // [NEW] Angle
+        float rotation;
         bool isDragging;
+        float hoverProgress; 
+        bool isHovered; // [NEW] Is the mouse currently over THIS specific card?
+        int index;      // [NEW] Original index in hand for stable Z-order
     };
 
     static void render(entt::registry& registry, sf::RenderTarget& target, const sf::View& worldView, const std::vector<CardInfo>& cards, const sf::Font& font) {
@@ -32,33 +35,61 @@ public:
 
 private:
     static void renderScreenUI(sf::RenderTarget& target, const std::vector<CardInfo>& cards, const sf::Font& font) {
-        for (const auto& card : cards) {
+        // [FIX] Stable Z-Order sorting
+        std::vector<const CardInfo*> renderOrder;
+        for (const auto& card : cards) renderOrder.push_back(&card);
+
+        std::sort(renderOrder.begin(), renderOrder.end(), [](const auto* a, const auto* b) {
+            // 1. Dragged cards are always on very top
+            if (a->isDragging != b->isDragging) return !a->isDragging; 
+            
+            // 2. Active hovered card is next (only ONE should be true)
+            if (a->isHovered != b->isHovered) return !a->isHovered;
+
+            // 3. Otherwise, use original index for stable fan-layering (lower index below higher)
+            return a->index < b->index;
+        });
+
+        for (const auto* cardPtr : renderOrder) {
+            const auto& card = *cardPtr;
+            
+            // [NEW] Calculate animated transforms based on hoverProgress
+            // Scale: 1.0 -> 1.4
+            float scale = 1.0f + (card.hoverProgress * 0.4f);
+            // Lift: 0px -> 80px (Y-up)
+            float lift = card.hoverProgress * 80.f;
+            // Rotation: Original -> 0.0 (Flatten)
+            float animatedRotation = card.rotation * (1.0f - card.hoverProgress);
+
             sf::RectangleShape shape(card.size);
-            // [NEW] Set origin to bottom center for natural fanning
             shape.setOrigin({card.size.x / 2.f, card.size.y});
-            shape.setPosition(card.position + sf::Vector2f(card.size.x / 2.f, card.size.y));
-            shape.setRotation(sf::degrees(card.rotation));
+            
+            // Apply lifted position
+            sf::Vector2f renderPos = card.position + sf::Vector2f(card.size.x / 2.f, card.size.y);
+            renderPos.y -= lift;
+            
+            shape.setPosition(renderPos);
+            shape.setScale({scale, scale});
+            shape.setRotation(sf::degrees(animatedRotation));
             
             shape.setFillColor(card.isDragging ? sf::Color(100, 100, 250, 255) : sf::Color(220, 220, 220, 255));
-            shape.setOutlineThickness(2.f);
+            shape.setOutlineThickness(2.f / scale); // Keep outline consistent
             shape.setOutlineColor(sf::Color::Black);
             target.draw(shape);
 
-            // [FIX] Use sf::String directly for proper Korean support
             sf::Text text(font);
             text.setString(card.name);
-            text.setCharacterSize(12);
+            text.setCharacterSize(static_cast<unsigned int>(12 * scale));
             text.setFillColor(sf::Color::Black);
             
             sf::FloatRect textBounds = text.getLocalBounds();
             text.setOrigin({textBounds.position.x + textBounds.size.x / 2.f, textBounds.position.y + textBounds.size.y / 2.f});
             
-            // Calculate text position relative to card center top
             sf::Transform cardTransform;
-            cardTransform.translate(shape.getPosition()).rotate(sf::degrees(card.rotation));
-            sf::Vector2f textLocalPos = {0.f, -card.size.y + 25.f};
+            cardTransform.translate(shape.getPosition()).rotate(sf::degrees(animatedRotation));
+            sf::Vector2f textLocalPos = {0.f, (-card.size.y + 25.f) * scale};
             text.setPosition(cardTransform.transformPoint(textLocalPos));
-            text.setRotation(sf::degrees(card.rotation));
+            text.setRotation(sf::degrees(animatedRotation));
             
             target.draw(text);
         }

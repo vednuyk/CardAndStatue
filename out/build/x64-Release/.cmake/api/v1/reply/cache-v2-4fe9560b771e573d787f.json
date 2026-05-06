@@ -39,7 +39,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "c:/CardAndStatue/out/build/x64-Release"
+			"value" : "c:/dev/CardAndStatue/out/build/x64-Release"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -483,7 +483,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/CardAndStatue/out/build/x64-Release/CMakeFiles/pkgRedirects"
+			"value" : "C:/dev/CardAndStatue/out/build/x64-Release/CMakeFiles/pkgRedirects"
 		},
 		{
 			"name" : "CMAKE_GENERATOR",
@@ -543,7 +543,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "C:/CardAndStatue"
+			"value" : "C:/dev/CardAndStatue"
 		},
 		{
 			"name" : "CMAKE_INSTALL_PREFIX",
@@ -555,7 +555,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/CardAndStatue/out/install/x64-Release"
+			"value" : "C:/dev/CardAndStatue/out/install/x64-Release"
 		},
 		{
 			"name" : "CMAKE_LINKER",
@@ -577,10 +577,6 @@
 			"name" : "CMAKE_MAKE_PROGRAM",
 			"properties" : 
 			[
-				{
-					"name" : "ADVANCED",
-					"value" : "1"
-				},
 				{
 					"name" : "HELPSTRING",
 					"value" : "make program"
@@ -771,7 +767,7 @@
 				}
 			],
 			"type" : "FILEPATH",
-			"value" : "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe"
+			"value" : "rc"
 		},
 		{
 			"name" : "CMAKE_RC_COMPILER_WORKS",
@@ -1111,7 +1107,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/entt"
+			"value" : "C:/dev/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/entt"
 		},
 		{
 			"name" : "FIND_PACKAGE_MESSAGE_DETAILS_nlohmann_json",
@@ -1123,7 +1119,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "[C:/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/nlohmann_json/nlohmann_jsonConfig.cmake][v3.12.0()]"
+			"value" : "[C:/dev/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/nlohmann_json/nlohmann_jsonConfig.cmake][v3.12.0()]"
 		},
 		{
 			"name" : "MassiveECSGame_BINARY_DIR",
@@ -1135,7 +1131,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/CardAndStatue/out/build/x64-Release"
+			"value" : "C:/dev/CardAndStatue/out/build/x64-Release"
 		},
 		{
 			"name" : "MassiveECSGame_IS_TOP_LEVEL",
@@ -1159,7 +1155,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/CardAndStatue"
+			"value" : "C:/dev/CardAndStatue"
 		},
 		{
 			"name" : "SFML_DIR",
@@ -1171,7 +1167,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/sfml"
+			"value" : "C:/dev/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/sfml"
 		},
 		{
 			"name" : "SFML_DOC_DIR",
@@ -1219,7 +1215,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/CardAndStatue/out/build/x64-Release/vcpkg_installed"
+			"value" : "C:/dev/CardAndStatue/out/build/x64-Release/vcpkg_installed"
 		},
 		{
 			"name" : "VCPKG_INSTALL_OPTIONS",
@@ -1243,7 +1239,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/CardAndStatue"
+			"value" : "C:/dev/CardAndStatue"
 		},
 		{
 			"name" : "VCPKG_MANIFEST_INSTALL",
@@ -1463,7 +1459,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/CardAndStatue/out/build/x64-Release/vcpkg_installed"
+			"value" : "C:/dev/CardAndStatue/out/build/x64-Release/vcpkg_installed"
 		},
 		{
 			"name" : "nlohmann_json_DIR",
@@ -1475,7 +1471,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/nlohmann_json"
+			"value" : "C:/dev/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/share/nlohmann_json"
 		}
 	],
 	"kind" : "cache",

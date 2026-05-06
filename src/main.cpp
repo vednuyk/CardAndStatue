@@ -14,7 +14,7 @@
 #include "systems/ui_system.hpp"
 
 // [FIX] 뷰포트 비율 유지 로직 개선
-void updateView(sf::RenderWindow& window, sf::View& view) {
+static void updateView(sf::RenderWindow& window, sf::View& view) {
     sf::Vector2u size = window.getSize();
     float windowRatio = static_cast<float>(size.x) / static_cast<float>(size.y);
     float viewRatio = 1280.f / 720.f; // 기준 비율 16:9
@@ -111,12 +111,16 @@ int main() {
         sf::String name;
         sf::Vector2f position;
         sf::Vector2f size{100.f, 140.f};
-        float rotation = 0.f; // [NEW] Rotation for fan effect
+        float rotation = 0.f; 
         bool isDragging = false;
+        
+        // [NEW] Hover Animation State
+        float hoverProgress = 0.f; // 0.0 to 1.0
+        bool isHovered = false;
     };
 
     std::vector<Card> cards;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 8; ++i) {
         cards.push_back({L"수녀의 묵주", {0.f, 0.f}});
     }
 
@@ -124,17 +128,12 @@ int main() {
         int n = static_cast<int>(cards.size());
         if (n == 0) return;
 
-        // [DYNAMIC CURVATURE] 
-        // Fewer cards: Tighter radius (more curve), wider angles to create hand-held look.
-        // More cards: Larger radius (flatter), tighter angles to overlap and fit on screen.
-        float t = std::clamp((static_cast<float>(n) - 2.f) / 8.f, 0.f, 1.f); // Normalize 2~10 cards to 0.0~1.0
-        
-        float arcRadius = 400.f + t * 800.f;  // Radius: 400 (curved) -> 1200 (flat)
-        float angleStep = 10.f - t * 7.f;    // Step: 10 deg (wide) -> 3 deg (dense)
+        // [FINAL MICRO-ADJUSTED HEARTHSTONE STYLE]
+        float t = std::clamp((static_cast<float>(n) - 2.f) / 8.f, 0.f, 1.f); 
+        float arcRadius = 800.f; 
+        float angleStep = 5.8f - t * 1.0f; 
 
-        // Anchor point is the bottom center of the screen
         sf::Vector2f handAnchor(logicalRes.x / 2.f, logicalRes.y + 20.f); 
-        // Pivot is arcRadius below the anchor
         sf::Vector2f pivot(handAnchor.x, handAnchor.y + arcRadius); 
         
         float totalAngleRange = (n > 1 ? static_cast<float>(n - 1) * angleStep : 0.f);
@@ -145,7 +144,6 @@ int main() {
                 float angleDeg = startAngle + i * angleStep;
                 float angleRad = angleDeg * (3.14159f / 180.0f);
 
-                // Circular Position Calculation
                 float x = pivot.x + arcRadius * std::sin(angleRad);
                 float y = pivot.y - arcRadius * std::cos(angleRad);
 
@@ -158,13 +156,13 @@ int main() {
     };
     updateCardLayout();
 
-    Card* draggedCard = nullptr;
+    auto draggedCard = static_cast<Card*>(nullptr);
     sf::Vector2f dragOffset;
 
     entt::registry registry;
     FPSDisplay fpsDisplay;
     WaveSystem waveSystem(configMgr.waves);
-    ProximityGrid enemyGrid;
+    auto enemyGrid = std::make_unique<ProximityGrid>();
     sf::Clock deltaClock;
     sf::Vector2f center = logicalRes / 2.f; 
     
@@ -207,10 +205,20 @@ int main() {
                 if (mousePressed->button == sf::Mouse::Button::Left) {
                     // [FIX] Use uiView for UI elements interaction
                     sf::Vector2f uiMousePos = window.mapPixelToCoords(mousePressed->position, uiView);
-                    // [NEW] Reverse iterate to pick top-most card
-                    for (auto it = cards.rbegin(); it != cards.rend(); ++it) {
-                        auto& card = *it;
-                        if (sf::FloatRect(card.position, card.size).contains(uiMousePos)) {
+                    // [FIX] Use dynamic bounding box (consistent with hover detection) to pick card
+                    for (int i = static_cast<int>(cards.size()) - 1; i >= 0; --i) {
+                        auto& card = cards[i];
+                        
+                        // Calculate the same animated box as used in the hover logic
+                        float scale = 1.0f + (card.hoverProgress * 0.4f);
+                        float lift = card.hoverProgress * 80.f;
+                        sf::Vector2f animatedSize = card.size * scale;
+                        sf::Vector2f animatedPos = {
+                            card.position.x + card.size.x / 2.f - animatedSize.x / 2.f,
+                            card.position.y - lift + card.size.y - animatedSize.y
+                        };
+
+                        if (sf::FloatRect(animatedPos, animatedSize).contains(uiMousePos)) {
                             card.isDragging = true;
                             draggedCard = &card;
                             dragOffset = card.position - uiMousePos;
@@ -250,10 +258,10 @@ int main() {
         }
 
         // [OPTIMIZED] 그리드 갱신
-        enemyGrid.clear();
+        enemyGrid->clear();
         auto enemyView = registry.view<component::EnemyTag, component::Transform>();
         for (auto entity : enemyView) {
-            enemyGrid.insert(entity, registry.get<component::Transform>(entity).position);
+            enemyGrid->insert(entity, registry.get<component::Transform>(entity).position);
         }
 
         waveSystem.update(registry, deltaTime, center, configMgr);
@@ -262,10 +270,47 @@ int main() {
         currentZoom += (targetZoom - currentZoom) * deltaTime * 2.0f;
         gameView.setSize(logicalRes * currentZoom);
 
-        StatueSkillSystem::update(registry, deltaTime, enemyGrid);
-        UnitCombatSystem::update(registry, deltaTime, enemyGrid);
+        StatueSkillSystem::update(registry, deltaTime, *enemyGrid);
+        UnitCombatSystem::update(registry, deltaTime, *enemyGrid);
         UnitMovementSystem::update(registry, deltaTime);
         fpsDisplay.update(deltaTime);
+
+        // [FIX] Real-time Hover Detection with Dynamic Bounding Boxes
+        sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+        sf::Vector2f uiMousePos = window.mapPixelToCoords(mousePos, uiView);
+        
+        Card* topHoveredCard = nullptr;
+        if (!draggedCard) {
+            // Find the top-most card under mouse, considering its animated position/size
+            for (int i = static_cast<int>(cards.size()) - 1; i >= 0; --i) {
+                auto& c = cards[i];
+                
+                // Mirror the rendering logic for collision
+                float scale = 1.0f + (c.hoverProgress * 0.4f);
+                float lift = c.hoverProgress * 80.f;
+                
+                sf::Vector2f animatedSize = c.size * scale;
+                // Center the box horizontally around the x-pivot
+                sf::Vector2f animatedPos = {
+                    c.position.x + c.size.x / 2.f - animatedSize.x / 2.f,
+                    c.position.y - lift + c.size.y - animatedSize.y
+                };
+
+                if (sf::FloatRect(animatedPos, animatedSize).contains(uiMousePos)) {
+                    topHoveredCard = &c;
+                    break;
+                }
+            }
+        }
+
+        for (auto& card : cards) {
+            card.isHovered = (&card == topHoveredCard);
+            
+            // Smoothly update hoverProgress
+            float targetProgress = card.isHovered ? 1.f : 0.f;
+            float animSpeed = 10.f; 
+            card.hoverProgress += (targetProgress - card.hoverProgress) * deltaTime * animSpeed;
+        }
 
         window.clear(sf::Color::Black);
         window.setView(gameView);
@@ -274,7 +319,10 @@ int main() {
         // [NEW] UI 시스템 렌더링 (Screen Space Cards)
         window.setView(uiView); // [FIX] Switch to UI View
         std::vector<UISystem::CardInfo> cardInfos;
-        for (const auto& c : cards) cardInfos.push_back({c.name, c.position, c.size, c.rotation, c.isDragging});
+        for (int i = 0; i < cards.size(); ++i) {
+            const auto& c = cards[i];
+            cardInfos.push_back({c.name, c.position, c.size, c.rotation, c.isDragging, c.hoverProgress, c.isHovered, i});
+        }
         UISystem::render(registry, window, gameView, cardInfos, font);
         
         window.setView(window.getDefaultView());

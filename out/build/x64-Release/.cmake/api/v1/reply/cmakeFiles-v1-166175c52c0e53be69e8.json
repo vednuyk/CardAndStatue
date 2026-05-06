@@ -286,8 +286,8 @@
 	"kind" : "cmakeFiles",
 	"paths" : 
 	{
-		"build" : "C:/CardAndStatue/out/build/x64-Release",
-		"source" : "C:/CardAndStatue"
+		"build" : "C:/dev/CardAndStatue/out/build/x64-Release",
+		"source" : "C:/dev/CardAndStatue"
 	},
 	"version" : 
 	{

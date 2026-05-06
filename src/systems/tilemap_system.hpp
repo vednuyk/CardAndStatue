@@ -4,6 +4,7 @@
 #include <random>
 #include <iostream>
 #include <array>
+#include <cstdint>
 
 // SFML 3.0 기반 고성능 멀티 텍스처 타일맵 시스템
 class TileMap : public sf::Drawable, public sf::Transformable {
@@ -13,6 +14,17 @@ public:
         Flower = 1
     };
 
+    TileMap() 
+        : m_grassTexture(nullptr), 
+          m_flowerTexture(nullptr), 
+          m_tileSize(0, 0), 
+          m_width(0), 
+          m_height(0) 
+    {
+        m_grassVertices.setPrimitiveType(sf::PrimitiveType::Triangles);
+        m_flowerVertices.setPrimitiveType(sf::PrimitiveType::Triangles);
+    }
+
     bool load(const sf::Texture& grassTex, const sf::Texture& flowerTex, sf::Vector2u tileSize, unsigned int width, unsigned int height) {
         m_grassTexture = &grassTex;
         m_flowerTexture = &flowerTex;
@@ -20,14 +32,12 @@ public:
         m_width = width;
         m_height = height;
 
-        m_tiles.assign(width * height, Grass);
+        m_tiles.assign(static_cast<size_t>(width) * height, Grass);
         
-        // 텍스처별 VertexArray 초기화
         m_grassVertices.setPrimitiveType(sf::PrimitiveType::Triangles);
         m_flowerVertices.setPrimitiveType(sf::PrimitiveType::Triangles);
         
-        // 초기에는 전체를 Grass로 잡고 메모리 예약
-        m_grassVertices.resize(width * height * 6);
+        m_grassVertices.resize(static_cast<size_t>(width) * height * 6);
         m_flowerVertices.clear(); 
 
         generateInitialTerrain();
@@ -41,7 +51,7 @@ private:
         std::mt19937 gen(12345);
         std::uniform_int_distribution<int> dist(0, 100);
 
-        for (unsigned int i = 0; i < m_tiles.size(); ++i) {
+        for (size_t i = 0; i < m_tiles.size(); ++i) {
             // Flower 배치 확률 (약 8%)
             if (dist(gen) < 8) {
                 m_tiles[i] = Flower;
@@ -104,8 +114,8 @@ private:
 
     sf::VertexArray m_grassVertices;
     sf::VertexArray m_flowerVertices;
-    const sf::Texture* m_grassTexture = nullptr;
-    const sf::Texture* m_flowerTexture = nullptr;
+    const sf::Texture* m_grassTexture;
+    const sf::Texture* m_flowerTexture;
     sf::Vector2u m_tileSize;
     unsigned int m_width;
     unsigned int m_height;

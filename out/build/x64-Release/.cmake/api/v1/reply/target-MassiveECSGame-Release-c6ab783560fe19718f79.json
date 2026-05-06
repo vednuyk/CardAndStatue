@@ -72,7 +72,7 @@
 				{
 					"backtrace" : 3,
 					"isSystem" : true,
-					"path" : "C:/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/include"
+					"path" : "C:/dev/CardAndStatue/out/build/x64-Release/vcpkg_installed/x64-windows/include"
 				}
 			],
 			"language" : "CXX",

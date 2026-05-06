@@ -38,17 +38,15 @@ private:
             auto& transform = view.get<component::Transform>(entity);
             auto& spriteData = view.get<component::SpriteData>(entity);
 
-            auto it = textureMap.find(spriteData.textureID);
-            if (it == textureMap.end()) continue;
-
-            const sf::Texture* tex = it->second;
+            // [FIX] Use count() instead of iterator comparison for safety
+            if (textureMap.count(spriteData.textureID) == 0) continue;
+            const sf::Texture* tex = textureMap.at(spriteData.textureID);
 
             // [NEW] Hit Flash Override
             if (auto* stats = registry.try_get<component::UnitStats>(entity)) {
                 if (stats->hitFlashTimer > 0.f) {
-                    auto flashIt = textureMap.find(component::TextureID::WhiteFlash);
-                    if (flashIt != textureMap.end()) {
-                        tex = flashIt->second;
+                    if (textureMap.count(component::TextureID::WhiteFlash) != 0) {
+                        tex = textureMap.at(component::TextureID::WhiteFlash);
                     }
                 }
             }
@@ -81,7 +79,7 @@ private:
         vertexBuffer.reserve(renderNodes.size() * 6); // 1 Sprite = 2 Triangles (6 Vertices)
 
         auto flush = [&]() {
-            if (currentTexture != nullptr && !vertexBuffer.empty()) {
+            if (static_cast<const void*>(currentTexture) != nullptr && !vertexBuffer.empty()) {
                 target.draw(vertexBuffer.data(), vertexBuffer.size(), sf::PrimitiveType::Triangles, currentTexture);
                 vertexBuffer.clear();
             }
@@ -92,7 +90,7 @@ private:
             auto& spriteData = registry.get<component::SpriteData>(node.entity);
 
             // Texture가 바뀌면 이전 배치를 그리고 새로 시작
-            if (node.texture != currentTexture) {
+            if (static_cast<const void*>(node.texture) != static_cast<const void*>(currentTexture)) {
                 flush();
                 currentTexture = node.texture;
             }

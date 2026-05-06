@@ -1,8 +1,8 @@
-# Install script for directory: C:/CardAndStatue
+# Install script for directory: C:/dev/CardAndStatue
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "C:/CardAndStatue/out/install/x64-Release")
+  set(CMAKE_INSTALL_PREFIX "C:/dev/CardAndStatue/out/install/x64-Release")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
@@ -35,7 +35,7 @@ endif()
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/CardAndStatue/out/build/x64-Release/install_local_manifest.txt"
+  file(WRITE "C:/dev/CardAndStatue/out/build/x64-Release/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -51,6 +51,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/CardAndStatue/out/build/x64-Release/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "C:/dev/CardAndStatue/out/build/x64-Release/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

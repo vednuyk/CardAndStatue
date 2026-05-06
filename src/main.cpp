@@ -177,9 +177,12 @@ int main() {
     float currentZoom = 1.0f;
     bool isFullscreen = true; 
 
+    float totalTime = 0.f;
+
     while (window.isOpen()) {
         float deltaTime = deltaClock.restart().asSeconds();
         if (deltaTime > 0.05f) deltaTime = 0.05f;
+        totalTime += deltaTime;
 
         while (const std::optional event = window.pollEvent()) {
             if (event->is<sf::Event::Closed>()) window.close();
@@ -219,9 +222,14 @@ int main() {
                         };
 
                         if (sf::FloatRect(animatedPos, animatedSize).contains(uiMousePos)) {
+                            // [FIX] Snap card center to mouse cursor on click
+                            card.position = uiMousePos - card.size / 2.f; 
+                            card.hoverProgress = 0.f;      // Stop lifting animation
+                            card.isHovered = false;
+
                             card.isDragging = true;
                             draggedCard = &card;
-                            dragOffset = card.position - uiMousePos;
+                            dragOffset = card.position - uiMousePos; // This will be exactly -card.size/2
                             break;
                         }
                     }
@@ -321,9 +329,21 @@ int main() {
         std::vector<UISystem::CardInfo> cardInfos;
         for (int i = 0; i < cards.size(); ++i) {
             const auto& c = cards[i];
-            cardInfos.push_back({c.name, c.position, c.size, c.rotation, c.isDragging, c.hoverProgress, c.isHovered, i});
+            
+            // [NEW] Check if the card is over the Statue (drop zone)
+            bool isInsideTarget = false;
+            if (c.isDragging) {
+                sf::Vector2i mPos = sf::Mouse::getPosition(window);
+                sf::Vector2f uiMPos = window.mapPixelToCoords(mPos, uiView);
+                sf::Vector2f distVec = uiMPos - (logicalRes / 2.f);
+                if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
+                    isInsideTarget = true;
+                }
+            }
+
+            cardInfos.push_back({c.name, c.position, c.size, c.rotation, c.isDragging, c.hoverProgress, c.isHovered, i, isInsideTarget});
         }
-        UISystem::render(registry, window, gameView, cardInfos, font);
+        UISystem::render(registry, window, gameView, cardInfos, font, totalTime);
         
         window.setView(window.getDefaultView());
         fpsDisplay.draw(window);

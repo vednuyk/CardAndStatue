@@ -1,0 +1,206 @@
+#pragma once
+#include <SFML/Graphics.hpp>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include "ui_system.hpp"
+#include "config_manager.hpp"
+#include "localization_manager.hpp"
+
+namespace ui {
+
+struct Card {
+    std::string nameKey; // [CHANGED] Use Key instead of direct String
+    sf::Vector2f position;
+    sf::Vector2f size{100.f, 140.f};
+    float rotation = 0.f; 
+    bool isDragging = false;
+    float hoverProgress = 0.f; 
+    bool isHovered = false;
+};
+
+class CardSystem {
+public:
+    CardSystem(sf::Vector2f logicalRes) : m_logicalRes(logicalRes) {
+        for (int i = 0; i < 8; ++i) {
+            m_cards.push_back({"CARD_ROSARY", {0.f, 0.f}});
+        }
+        updateLayout();
+    }
+
+    void handleEvent(const sf::Event& event, const sf::RenderWindow& window, const sf::View& uiView, const sf::View& gameView, const entt::registry& registry, sf::Vector2f& dropZoneOut) {
+        if (const auto* mousePressed = event.getIf<sf::Event::MouseButtonPressed>()) {
+            if (mousePressed->button == sf::Mouse::Button::Left) {
+                sf::Vector2f uiMousePos = window.mapPixelToCoords(mousePressed->position, uiView);
+                
+                // [OPTIMIZED] Use already calculated isHovered state from update() 
+                // ensures click matches visual highlight exactly.
+                for (auto& card : m_cards) {
+                    if (card.isHovered) {
+                        card.position = uiMousePos - card.size / 2.f; 
+                        card.hoverProgress = 0.f;
+                        card.isHovered = false;
+                        card.isDragging = true;
+                        m_draggedCard = &card;
+                        m_dragOffset = card.position - uiMousePos;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (const auto* mouseReleased = event.getIf<sf::Event::MouseButtonReleased>()) {
+            if (mouseReleased->button == sf::Mouse::Button::Left && m_draggedCard) {
+                sf::Vector2f uiMousePos = window.mapPixelToCoords(mouseReleased->position, uiView);
+                
+                sf::Vector2f dropZoneCenter = m_logicalRes / 2.f;
+                auto statueView = registry.view<component::StatueTag, component::Transform>();
+                if (statueView.begin() != statueView.end()) {
+                    auto statueEnt = statueView.front();
+                    auto worldPos = registry.get<component::Transform>(statueEnt).position;
+                    dropZoneCenter = const_cast<sf::RenderWindow&>(window).mapPixelToCoords(const_cast<sf::RenderWindow&>(window).mapCoordsToPixel(worldPos, gameView), uiView);
+                }
+                dropZoneOut = dropZoneCenter;
+
+                sf::Vector2f distVec = uiMousePos - dropZoneCenter;
+                if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
+                    m_pendingUse = true;
+                } else {
+                    m_draggedCard->isDragging = false;
+                    updateLayout();
+                }
+                m_draggedCard = nullptr;
+            }
+        }
+
+        if (const auto* mouseMoved = event.getIf<sf::Event::MouseMoved>()) {
+            if (m_draggedCard) {
+                sf::Vector2f uiMousePos = window.mapPixelToCoords(mouseMoved->position, uiView);
+                m_draggedCard->position = uiMousePos + m_dragOffset;
+            }
+        }
+    }
+
+    void update(float deltaTime, const sf::RenderWindow& window, const sf::View& uiView) {
+        sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+        sf::Vector2f uiMousePos = window.mapPixelToCoords(mousePos, uiView);
+        
+        Card* topHoveredCard = nullptr;
+        if (!m_draggedCard) {
+            float minScore = std::numeric_limits<float>::max();
+            
+            for (auto& c : m_cards) {
+                float scale = 1.0f + (c.hoverProgress * 0.4f);
+                float lift = c.hoverProgress * 80.f;
+                sf::Vector2f animatedSize = c.size * scale;
+                sf::Vector2f animatedPos = {
+                    c.position.x + c.size.x / 2.f - animatedSize.x / 2.f,
+                    c.position.y - lift + c.size.y - animatedSize.y
+                };
+                sf::FloatRect animatedBox(animatedPos, animatedSize);
+                sf::FloatRect baseBox(c.position, c.size);
+
+                // Check if mouse is in candidate area
+                if (animatedBox.contains(uiMousePos) || baseBox.contains(uiMousePos)) {
+                    // [CLEVER] Calculate Score based on distance to BASE center
+                    sf::Vector2f baseCenter = c.position + c.size / 2.f;
+                    sf::Vector2f diff = uiMousePos - baseCenter;
+                    float distSq = diff.x * diff.x + diff.y * diff.y;
+                    
+                    // Focus Stickiness (Hysteresis): Give 30% bonus to current focus
+                    float score = distSq;
+                    if (c.isHovered) score *= 0.5f; // Stronger bias (half distance) makes it very sticky
+
+                    if (score < minScore) {
+                        minScore = score;
+                        topHoveredCard = &c;
+                    }
+                }
+            }
+        }
+
+        for (auto& card : m_cards) {
+            card.isHovered = (&card == topHoveredCard);
+            float targetProgress = card.isHovered ? 1.f : 0.f;
+            card.hoverProgress += (targetProgress - card.hoverProgress) * deltaTime * 10.f;
+        }
+    }
+
+    void render(entt::registry& registry, sf::RenderWindow& window, const sf::View& gameView, const sf::View& uiView, const sf::Font& font, float totalTime) {
+        window.setView(uiView);
+        std::vector<UISystem::CardInfo> cardInfos;
+        
+        sf::Vector2f dropZoneCenter = m_logicalRes / 2.f;
+        auto statueView = registry.view<component::StatueTag, component::Transform>();
+        if (statueView.begin() != statueView.end()) {
+            auto worldPos = registry.get<component::Transform>(statueView.front()).position;
+            dropZoneCenter = window.mapPixelToCoords(window.mapCoordsToPixel(worldPos, gameView), uiView);
+        }
+
+        auto& l10n = LocalizationManager::getInstance();
+
+        for (int i = 0; i < m_cards.size(); ++i) {
+            const auto& c = m_cards[i];
+            bool isInsideTarget = false;
+            if (c.isDragging) {
+                sf::Vector2i mPos = sf::Mouse::getPosition(window);
+                sf::Vector2f uiMPos = window.mapPixelToCoords(mPos, uiView);
+                sf::Vector2f distVec = uiMPos - dropZoneCenter;
+                if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
+                    isInsideTarget = true;
+                }
+            }
+            // [CHANGED] Get localized string from Key
+            cardInfos.push_back({l10n.get(c.nameKey), c.position, c.size, c.rotation, c.isDragging, c.hoverProgress, c.isHovered, i, isInsideTarget});
+        }
+        UISystem::render(registry, window, gameView, cardInfos, font, totalTime);
+    }
+
+    bool consumePendingUse() {
+        bool val = m_pendingUse;
+        m_pendingUse = false;
+        return val;
+    }
+
+    void removeCardUnderMouse() {
+        m_cards.erase(std::remove_if(m_cards.begin(), m_cards.end(), [](const Card& c){ return c.isDragging; }), m_cards.end());
+        updateLayout();
+    }
+
+    void updateLayout() {
+        int n = static_cast<int>(m_cards.size());
+        if (n == 0) return;
+
+        float t = std::clamp((static_cast<float>(n) - 2.f) / 8.f, 0.f, 1.f); 
+        float arcRadius = 800.f; 
+        float angleStep = 5.8f - t * 1.0f; 
+
+        sf::Vector2f handAnchor(m_logicalRes.x / 2.f, m_logicalRes.y + 20.f); 
+        sf::Vector2f pivot(handAnchor.x, handAnchor.y + arcRadius); 
+        float totalAngleRange = (n > 1 ? static_cast<float>(n - 1) * angleStep : 0.f);
+        float startAngle = -totalAngleRange / 2.f;
+
+        for (int i = 0; i < n; ++i) {
+            if (!m_cards[i].isDragging) {
+                float angleDeg = startAngle + i * angleStep;
+                float angleRad = angleDeg * (3.14159f / 180.0f);
+                float x = pivot.x + arcRadius * std::sin(angleRad);
+                float y = pivot.y - arcRadius * std::cos(angleRad);
+                m_cards[i].position = {x - m_cards[i].size.x / 2.f, y - m_cards[i].size.y};
+                m_cards[i].rotation = angleDeg;
+            } else {
+                m_cards[i].rotation = 0.f; 
+            }
+        }
+    }
+
+private:
+    sf::Vector2f m_logicalRes;
+    std::vector<Card> m_cards;
+    Card* m_draggedCard = nullptr;
+    sf::Vector2f m_dragOffset;
+    bool m_pendingUse = false;
+};
+
+} // namespace ui

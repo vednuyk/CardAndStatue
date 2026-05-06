@@ -34,15 +34,10 @@ private:
         auto view = registry.view<component::Transform, component::SpriteData>();
         renderNodes.reserve(view.size_hint());
 
-        for (auto entity : view) {
-            auto& transform = view.get<component::Transform>(entity);
-            auto& spriteData = view.get<component::SpriteData>(entity);
-
-            // [FIX] Use count() instead of iterator comparison for safety
-            if (textureMap.count(spriteData.textureID) == 0) continue;
+        view.each([&](auto entity, auto& transform, auto& spriteData) {
+            if (textureMap.count(spriteData.textureID) == 0) return;
             const sf::Texture* tex = textureMap.at(spriteData.textureID);
 
-            // [NEW] Hit Flash Override
             if (auto* stats = registry.try_get<component::UnitStats>(entity)) {
                 if (stats->hitFlashTimer > 0.f) {
                     if (textureMap.count(component::TextureID::WhiteFlash) != 0) {
@@ -56,19 +51,16 @@ private:
 
             float hw = (texRect.size.x * spriteData.scale.x) / 2.f;
             float hh = (texRect.size.y * spriteData.scale.y) / 2.f;
-            
-            // Depth = Foot Y position by default
-            float depth = transform.position.y + hh;
 
-            // [NEW] Rendering Priority for Skills
+            float depth = transform.position.y + hh;
             if (registry.any_of<component::OrbitalSphere>(entity)) {
-                depth += 100000.f; // Force to top
+                depth += 100000.f; // Force skills to top
             }
 
             renderNodes.push_back({entity, depth, tex, texRect, {hw, hh}});
-        }
+        });
 
-        // 1. 전역 정렬 (Foot Y)
+        // 1. 전역 정렬 (Depth)
         std::sort(renderNodes.begin(), renderNodes.end(), [](const auto& a, const auto& b) {
             return a.depth < b.depth;
         });
@@ -76,10 +68,10 @@ private:
         const sf::Texture* currentTexture = nullptr;
         static std::vector<sf::Vertex> vertexBuffer;
         vertexBuffer.clear();
-        vertexBuffer.reserve(renderNodes.size() * 6); // 1 Sprite = 2 Triangles (6 Vertices)
+        vertexBuffer.reserve(renderNodes.size() * 6);
 
         auto flush = [&]() {
-            if (static_cast<const void*>(currentTexture) != nullptr && !vertexBuffer.empty()) {
+            if (currentTexture != nullptr && !vertexBuffer.empty()) {
                 target.draw(vertexBuffer.data(), vertexBuffer.size(), sf::PrimitiveType::Triangles, currentTexture);
                 vertexBuffer.clear();
             }
@@ -89,8 +81,7 @@ private:
             auto& transform = registry.get<component::Transform>(node.entity);
             auto& spriteData = registry.get<component::SpriteData>(node.entity);
 
-            // Texture가 바뀌면 이전 배치를 그리고 새로 시작
-            if (static_cast<const void*>(node.texture) != static_cast<const void*>(currentTexture)) {
+            if (node.texture != currentTexture) {
                 flush();
                 currentTexture = node.texture;
             }
@@ -119,6 +110,4 @@ private:
 
         flush();
     }
-
-private:
 };

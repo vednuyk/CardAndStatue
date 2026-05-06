@@ -1,0 +1,14 @@
+{
+    "maxHealth": 2000.0,
+    "scale": 1.25,
+    "boxSize": {
+        "x": 50.0,
+        "y": 39.0
+    },
+    "boxOffset": {
+        "x": 1.0,
+        "y": 27.0
+    },
+    "hpRegen": 2.0,
+    "armor": 10.0
+}

@@ -64,6 +64,7 @@ struct SpawnKnightSkill {
 
 struct RosarySkill {
     bool initialized{false};
+    bool isClosing{false}; // [NEW] Transition flag for shrinking effect
     float damage{10.f};
     float knockbackForce{150.f};
     float rotationSpeed{2.0f};
@@ -108,5 +109,9 @@ struct PlayerUnitTag {};
 struct EnemyTag {};
 struct StatueTag {};
 struct HelperTag {};
+
+struct Target {
+    entt::entity entity{entt::null};
+};
 
 } // namespace component

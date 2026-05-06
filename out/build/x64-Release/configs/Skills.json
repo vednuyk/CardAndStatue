@@ -1,0 +1,19 @@
+{
+
+    "holy": {
+        "cooldown": 5.0,
+        "damage": 100.0,
+        "radius": 200.0
+    },
+    "spawnKnight": {
+        "cooldown": 10.0,
+        "spawnCount": 3
+    },
+    "rosary": {
+        "damage": 15.0,
+        "knockbackForce": 250.0,
+        "rotationSpeed": 3.0,
+        "radius": 150.0,
+        "duration": 10.0
+    }
+}

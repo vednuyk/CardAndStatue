@@ -67,10 +67,10 @@ private:
 
         for (unsigned int y = 0; y < m_height; ++y) {
             for (unsigned int x = 0; x < m_width; ++x) {
-                TileType type = static_cast<TileType>(m_tiles[x + y * m_width]);
+                TileType type = static_cast<TileType>(m_tiles[static_cast<size_t>(x) + static_cast<size_t>(y) * m_width]);
                 
                 // 각 타일셋(128x128) 내의 4x4 타일 중 하나를 랜덤하게 선택 (Variation)
-                uint32_t hash = static_cast<uint32_t>(x * 73856093 ^ y * 19349663);
+                uint32_t hash = static_cast<uint32_t>(static_cast<uint64_t>(x) * 73856093ULL ^ static_cast<uint64_t>(y) * 19349663ULL);
                 sf::Vector2i texCoords((hash % 4) * 32, ((hash / 4) % 4) * 32);
 
                 sf::VertexArray& targetVA = (type == Grass) ? m_grassVertices : m_flowerVertices;

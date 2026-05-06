@@ -1,0 +1,11 @@
+{
+    // [웨이브 2 설정]
+    "totalEnemies": 60,
+    "minPerGroup": 10,
+    "maxPerGroup": 15,
+    "minInterval": 4.0,
+    "maxInterval": 6.0,
+    "spawnDistance": 450.0,
+    "waveWaitTime": 5.0,     // 2웨이브 시작 전에는 5초 대기
+    "enemyTypes": ["Enemy1"]
+}

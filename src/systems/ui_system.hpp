@@ -26,13 +26,69 @@ public:
         bool isInsideTarget; 
     };
 
-    static void render(entt::registry& registry, sf::RenderTarget& target, const sf::View& worldView, const std::vector<CardInfo>& cards, const sf::Font& font, float totalTime) {
+    struct PassiveSlotInfo {
+        sf::String cardName;
+        sf::Vector2f position;
+        sf::Vector2f size;
+        bool isOccupied;
+        bool isActive;
+        float progress; // 0.0 to 1.0
+    };
+
+    static void render(entt::registry& registry, sf::RenderTarget& target, const sf::View& worldView, 
+                       const std::vector<CardInfo>& cards, const std::vector<PassiveSlotInfo>& passiveSlots, 
+                       const sf::Font& font, float totalTime) {
         renderWorldUI(registry, target);
-        renderScreenUI(target, cards, font, totalTime);
+        renderScreenUI(target, cards, passiveSlots, font, totalTime);
     }
 
 private:
-    static void renderScreenUI(sf::RenderTarget& target, const std::vector<CardInfo>& cards, const sf::Font& font, float totalTime) {
+    static void renderScreenUI(sf::RenderTarget& target, const std::vector<CardInfo>& cards, 
+                               const std::vector<PassiveSlotInfo>& passiveSlots, 
+                               const sf::Font& font, float totalTime) {
+        
+        // Render Passive Slots first (background layer)
+        for (const auto& slot : passiveSlots) {
+            sf::RectangleShape shape(slot.size);
+            shape.setPosition(slot.position);
+            
+            if (!slot.isOccupied) {
+                shape.setFillColor(sf::Color(0, 0, 0, 50));
+                shape.setOutlineThickness(2.f);
+                shape.setOutlineColor(sf::Color(255, 255, 255, 100));
+                target.draw(shape);
+            } else {
+                sf::Color baseColor = slot.isActive ? sf::Color(150, 255, 150) : sf::Color(180, 180, 180);
+                shape.setFillColor(baseColor);
+                shape.setOutlineThickness(slot.isActive ? 4.f : 2.f);
+                shape.setOutlineColor(slot.isActive ? sf::Color::Green : sf::Color::White);
+                target.draw(shape);
+
+                if (!slot.isActive) {
+                    // Cooldown overlay (Darkening from top to bottom as it recharges)
+                    sf::RectangleShape overlay(slot.size);
+                    overlay.setPosition(slot.position);
+                    overlay.setFillColor(sf::Color(0, 0, 0, 200));
+                    overlay.setScale({1.f, 1.f - slot.progress}); 
+                    target.draw(overlay);
+                } else {
+                    // Active pulse effect
+                    float pulse = (std::sin(totalTime * 10.f) + 1.f) * 0.5f;
+                    shape.setOutlineColor(sf::Color(0, 255, 0, static_cast<std::uint8_t>(150 + pulse * 105)));
+                    target.draw(shape);
+                }
+
+                sf::Text text(font);
+                text.setString(slot.cardName);
+                text.setCharacterSize(12);
+                text.setFillColor(sf::Color::Black);
+                sf::FloatRect textBounds = text.getLocalBounds();
+                text.setOrigin({textBounds.position.x + textBounds.size.x / 2.f, textBounds.position.y + textBounds.size.y / 2.f});
+                text.setPosition(slot.position + slot.size / 2.f);
+                target.draw(text);
+            }
+        }
+
         std::vector<const CardInfo*> renderOrder;
         for (const auto& card : cards) renderOrder.push_back(&card);
 
@@ -59,26 +115,18 @@ private:
             shape.setScale({scale, scale});
             shape.setRotation(sf::degrees(animatedRotation));
             
-            // [FIXED] Symmetrical, Uniform Glow & Reverted Color
             sf::Color baseColor = card.isDragging ? sf::Color(100, 100, 250) : sf::Color(220, 220, 220);
             
             if (card.isInsideTarget) {
                 float pulse = (std::sin(totalTime * 8.f) + 1.f) * 0.5f;
-                
-                // [FIX] Transparent Blue (Reverted from Golden)
                 baseColor.a = 150; 
-                
-                // [FIX] Calculate Center for Symmetrical Glow
-                // Point {size.x/2, size.y/2} in local space is the exact center
                 sf::Vector2f visualCenter = shape.getTransform().transformPoint({card.size.x / 2.f, card.size.y / 2.f});
 
-                int layers = 10; // Fewer layers for a tighter, cleaner glow
-                float maxPadding = 12.f + (pulse * 5.f); // Much thinner padding
+                int layers = 10;
+                float maxPadding = 12.f + (pulse * 5.f);
                 
                 for (int i = 0; i < layers; ++i) {
                     float layerProgress = static_cast<float>(i + 1) / layers;
-                    
-                    // [FIX] Uniform thickness by adding pixels to size
                     float padding = maxPadding * layerProgress;
                     sf::Vector2f glowSize = card.size + sf::Vector2f(padding * 2.f, padding * 2.f);
                     
@@ -88,7 +136,6 @@ private:
                     glow.setRotation(shape.getRotation());
                     glow.setScale(shape.getScale());
                     
-                    // Cleaner Alpha falloff (faster dissipation)
                     float alpha = 100.f * std::pow(1.f - layerProgress, 1.5f) * (0.8f + 0.2f * pulse);
                     glow.setFillColor(sf::Color(255, 255, 255, static_cast<std::uint8_t>(alpha)));
                     

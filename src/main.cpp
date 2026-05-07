@@ -181,21 +181,36 @@ int main() {
         fpsDisplay.update(deltaTime);
         cardSystem.update(deltaTime, window, uiView);
 
-        if (cardSystem.consumePendingUse()) {
+        auto applySkill = [&](const std::string& skillKey) {
             auto cfg = configMgr.skills.rosary;
-            // [FIX] C2397 Narrowing conversion fix: provide all arguments with correct types
-            registry.emplace_or_replace<component::RosarySkill>(
-                statue, 
-                false, // initialized
-                false, // isClosing
-                cfg.damage, 
-                cfg.knockbackForce, 
-                cfg.rotationSpeed, 
-                cfg.radius, 
-                cfg.duration, 
-                0.f    // remainingTime
-            );
+            if (skillKey == "CARD_ROSARY") {
+                registry.emplace_or_replace<component::RosarySkill>(
+                    statue, 
+                    false, // initialized
+                    false, // isClosing
+                    cfg.damage, 
+                    cfg.knockbackForce, 
+                    cfg.rotationSpeed, 
+                    cfg.radius, 
+                    cfg.duration, 
+                    0.f    // remainingTime
+                );
+            }
+            // Add other skills here as needed
+        };
+
+        if (cardSystem.consumePendingUse()) {
+            applySkill("CARD_ROSARY");
             cardSystem.removeCardUnderMouse();
+        }
+
+        if (cardSystem.consumePendingPassiveDrop()) {
+            cardSystem.removeCardUnderMouse();
+        }
+
+        auto passiveSkills = cardSystem.popTriggeredPassiveSkills();
+        for (const auto& skill : passiveSkills) {
+            applySkill(skill);
         }
 
         // Rendering

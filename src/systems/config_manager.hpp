@@ -58,6 +58,15 @@ struct EnemyConfig {
     float scale = 0.1f;
     float radius = 3.0f;
     std::string texturePath;
+
+    struct AnimationData {
+        bool enabled = false;
+        int frameCount = 1;
+        int framesPerRow = 1; 
+        float frameDuration = 0.1f;
+        int frameWidth = 0;
+        int frameHeight = 0;
+    } animation;
 };
 
 struct WaveConfig {
@@ -187,6 +196,17 @@ private:
                     cfg.scale = j.value("scale", cfg.scale);
                     cfg.radius = j.value("radius", cfg.radius);
                     cfg.texturePath = j.value("texturePath", "");
+
+                    if (j.contains("animation")) {
+                        auto& anim = j["animation"];
+                        cfg.animation.enabled = true;
+                        cfg.animation.frameCount = anim.value("frameCount", 1);
+                        cfg.animation.framesPerRow = anim.value("framesPerRow", 1);
+                        cfg.animation.frameDuration = anim.value("frameDuration", 0.1f);
+                        cfg.animation.frameWidth = anim.value("frameWidth", 0);
+                        cfg.animation.frameHeight = anim.value("frameHeight", 0);
+                    }
+
                     enemies[cfg.name] = cfg;
                 }
             }

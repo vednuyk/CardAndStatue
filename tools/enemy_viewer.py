@@ -51,11 +51,29 @@ def main():
             full_tex_path = os.path.join(ROOT_DIR, 'assets', 'IMG', 'Enemy', os.path.basename(tex_path))
 
         try:
-            img = pygame.image.load(full_tex_path).convert_alpha()
-        except:
+            full_img = pygame.image.load(full_tex_path).convert_alpha()
+            
+            # --- Sprite Sheet Handling ---
+            if "animation" in config:
+                fw = config["animation"].get("frameWidth")
+                fh = config["animation"].get("frameHeight")
+                if fw and fh:
+                    # Crop the first frame
+                    img = pygame.Surface((fw, fh), pygame.SRCALPHA)
+                    img.blit(full_img, (0, 0), (0, 0, fw, fh))
+                else:
+                    img = full_img
+            else:
+                img = full_img
+        except Exception as e:
+            print(f"Error loading image {full_tex_path}: {e}")
             # Placeholder if image not found
             img = pygame.Surface((100, 100))
             img.fill((255, 0, 255))
+        
+        # Initialize offset if not present
+        if "offset" not in config:
+            config["offset"] = {"x": 0.0, "y": 0.0}
         
         return config, img, file_path
 
@@ -65,9 +83,6 @@ def main():
     while running:
         scale = config.get("scale", 1.0)
         radius = config.get("radius", 1.0)
-        # Handle cases where offset might not exist in JSON yet
-        if "offset" not in config:
-            config["offset"] = {"x": 0.0, "y": 0.0}
         offset = config["offset"]
         
         for event in pygame.event.get():

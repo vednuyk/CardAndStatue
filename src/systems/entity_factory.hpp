@@ -37,9 +37,31 @@ public:
         registry.emplace<component::Velocity>(entity, sf::Vector2f(0.f, 0.f));
         
         auto& sprite = registry.emplace<component::SpriteData>(entity);
-        sprite.textureID = component::TextureID::FallbackRedSquare; // [TEMPORARY] Force Red Square
+        
+        // Map texture ID based on name or use fallback
+        if (typeName == "GoblinJunior") {
+            sprite.textureID = component::TextureID::GoblinJunior;
+        } else {
+            sprite.textureID = component::TextureID::FallbackRedSquare;
+        }
+
         sprite.textureName = cfg.name;
-        sprite.scale = {cfg.scale, cfg.scale}; // Applied directly from config
+        sprite.scale = {cfg.scale, cfg.scale};
+
+        // Initialize Animation if enabled in config
+        if (cfg.animation.enabled) {
+            auto& anim = registry.emplace<component::Animation>(entity);
+            anim.frameCount = cfg.animation.frameCount;
+            anim.framesPerRow = cfg.animation.framesPerRow; // [NEW]
+            anim.frameDuration = cfg.animation.frameDuration;
+            anim.frameWidth = cfg.animation.frameWidth;
+            anim.frameHeight = cfg.animation.frameHeight;
+            anim.currentFrame = 0;
+            anim.timer = 0.f;
+
+            // Initial texture rect
+            sprite.textureRect = sf::FloatRect({0.f, 0.f}, {static_cast<float>(anim.frameWidth), static_cast<float>(anim.frameHeight)});
+        }
 
         return entity;
     }

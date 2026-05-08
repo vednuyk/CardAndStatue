@@ -1,0 +1,20 @@
+{
+  "name": "GoblinJunior",
+  "speed": 65.0,
+  "damage": 8.0,
+  "maxHealth": 45.0,
+  "scale": 1.5,
+  "radius": 17.0,
+  "texturePath": "assets/IMG/Enemy/GoblinJunior/GoblinJuniorSpriteSheet.png",
+  "animation": {
+    "frameCount": 4,
+    "framesPerRow": 2,
+    "frameDuration": 0.15,
+    "frameWidth": 32,
+    "frameHeight": 32
+  },
+  "offset": {
+    "x": 0.0,
+    "y": 0.0
+  }
+}

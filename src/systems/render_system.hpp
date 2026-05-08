@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <map>
 #include <vector>
+#include <string>
 #include "../components/unit_components.hpp"
 
 #include "tilemap_system.hpp"
@@ -21,12 +22,34 @@ public:
 
 private:
     static void renderEntities(entt::registry& registry, sf::RenderTarget& target, const std::map<component::TextureID, const sf::Texture*>& textureMap) {
+        // [SHADERS] 피격 효과를 위한 간단한 셰이더 정의
+        static bool shaderLoaded = false;
+        static sf::Shader hitShader;
+        if (!shaderLoaded) {
+            // SFML 3.0 GLSL 120 (기본 정점 색상과 텍스처를 곱하되, 알파가 254/255 미만이면 흰색으로 출력)
+            const std::string fragmentShader = 
+                "uniform sampler2D texture;"
+                "void main() {"
+                "    vec4 pixel = texture2D(texture, gl_TexCoord[0].xy);"
+                "    if (gl_Color.a > 0.995 && gl_Color.a < 0.997) {"
+                "        vec3 flashColor = mix(pixel.rgb, vec3(1.0), 0.5);"
+                "        gl_FragColor = vec4(flashColor, pixel.a);"
+                "    } else {"
+                "        gl_FragColor = pixel * gl_Color;"
+                "    }"
+                "}";
+            if (hitShader.loadFromMemory(fragmentShader, sf::Shader::Type::Fragment)) {
+                shaderLoaded = true;
+            }
+        }
+
         struct RenderNode {
             entt::entity entity;
             float depth;
             const sf::Texture* texture;
             sf::FloatRect texRect;
             sf::Vector2f halfSize;
+            sf::Color color;
         };
         static std::vector<RenderNode> renderNodes;
         renderNodes.clear();
@@ -38,11 +61,11 @@ private:
             if (textureMap.count(spriteData.textureID) == 0) return;
             const sf::Texture* tex = textureMap.at(spriteData.textureID);
 
+            sf::Color vertColor = sf::Color::White;
             if (auto* stats = registry.try_get<component::UnitStats>(entity)) {
                 if (stats->hitFlashTimer > 0.f) {
-                    if (textureMap.count(component::TextureID::WhiteFlash) != 0) {
-                        tex = textureMap.at(component::TextureID::WhiteFlash);
-                    }
+                    // Alpha 254를 "흰색 플래시" 신호로 사용 (정상 상태는 255)
+                    vertColor = sf::Color(255, 255, 255, 254); 
                 }
             }
 
@@ -57,7 +80,7 @@ private:
                 depth += 100000.f; // Force skills to top
             }
 
-            renderNodes.push_back({entity, depth, tex, texRect, {hw, hh}});
+            renderNodes.push_back({entity, depth, tex, texRect, {hw, hh}, vertColor});
         });
 
         // 1. 전역 정렬 (Depth)
@@ -72,7 +95,11 @@ private:
 
         auto flush = [&]() {
             if (currentTexture != nullptr && !vertexBuffer.empty()) {
-                target.draw(vertexBuffer.data(), vertexBuffer.size(), sf::PrimitiveType::Triangles, currentTexture);
+                sf::RenderStates states;
+                states.texture = currentTexture;
+                if (shaderLoaded) states.shader = &hitShader; // 셰이더 적용
+
+                target.draw(vertexBuffer.data(), vertexBuffer.size(), sf::PrimitiveType::Triangles, states);
                 vertexBuffer.clear();
             }
         };
@@ -99,13 +126,14 @@ private:
             sf::Vector2f p4 = combinedTransform.transformPoint({-hw, hh});
 
             const auto& tr = node.texRect;
-            vertexBuffer.push_back(sf::Vertex(p1, sf::Color::White, {tr.position.x, tr.position.y}));
-            vertexBuffer.push_back(sf::Vertex(p2, sf::Color::White, {tr.position.x + tr.size.x, tr.position.y}));
-            vertexBuffer.push_back(sf::Vertex(p3, sf::Color::White, {tr.position.x + tr.size.x, tr.position.y + tr.size.y}));
+            sf::Color c = node.color;
+            vertexBuffer.push_back(sf::Vertex(p1, c, {tr.position.x, tr.position.y}));
+            vertexBuffer.push_back(sf::Vertex(p2, c, {tr.position.x + tr.size.x, tr.position.y}));
+            vertexBuffer.push_back(sf::Vertex(p3, c, {tr.position.x + tr.size.x, tr.position.y + tr.size.y}));
             
-            vertexBuffer.push_back(sf::Vertex(p1, sf::Color::White, {tr.position.x, tr.position.y}));
-            vertexBuffer.push_back(sf::Vertex(p3, sf::Color::White, {tr.position.x + tr.size.x, tr.position.y + tr.size.y}));
-            vertexBuffer.push_back(sf::Vertex(p4, sf::Color::White, {tr.position.x, tr.position.y + tr.size.y}));
+            vertexBuffer.push_back(sf::Vertex(p1, c, {tr.position.x, tr.position.y}));
+            vertexBuffer.push_back(sf::Vertex(p3, c, {tr.position.x + tr.size.x, tr.position.y + tr.size.y}));
+            vertexBuffer.push_back(sf::Vertex(p4, c, {tr.position.x, tr.position.y + tr.size.y}));
         }
 
         flush();

@@ -15,6 +15,7 @@
 #include "systems/card_system.hpp"
 #include "systems/ai_system.hpp"
 #include "systems/localization_manager.hpp"
+#include "systems/animation_system.hpp"
 
 static void updateView(sf::RenderWindow& window, sf::View& view) {
     sf::Vector2u size = window.getSize();
@@ -66,7 +67,7 @@ int main() {
     };
 
     loadTex(component::TextureID::Statue, "assets/IMG/Player/Statue.png");
-    loadTex(component::TextureID::Enemy1, "assets/IMG/Enemy/Enemy1.png");
+    loadTex(component::TextureID::GoblinJunior, "assets/IMG/Enemy/GoblinJunior/GoblinJuniorSpriteSheet.png");
     loadTex(component::TextureID::Grass, "assets/IMG/BG/Grass.png");
     loadTex(component::TextureID::Flower, "assets/IMG/BG/Flower.png");
 
@@ -170,6 +171,7 @@ int main() {
         });
 
         waveSystem.update(registry, deltaTime, center, configMgr);
+        AnimationSystem::update(registry, deltaTime);
         float targetZoom = waveSystem.getCurrentWaveZoom();
         currentZoom += (targetZoom - currentZoom) * deltaTime * 2.0f;
         gameView.setSize(logicalRes * currentZoom);
@@ -184,17 +186,14 @@ int main() {
         auto applySkill = [&](const std::string& skillKey) {
             auto cfg = configMgr.skills.rosary;
             if (skillKey == "CARD_ROSARY") {
-                registry.emplace_or_replace<component::RosarySkill>(
-                    statue, 
-                    false, // initialized
-                    false, // isClosing
-                    cfg.damage, 
-                    cfg.knockbackForce, 
-                    cfg.rotationSpeed, 
-                    cfg.radius, 
-                    cfg.duration, 
-                    0.f    // remainingTime
-                );
+                component::RosarySkill rosary;
+                rosary.damage = cfg.damage;
+                rosary.knockbackForce = cfg.knockbackForce;
+                rosary.rotationSpeed = cfg.rotationSpeed;
+                rosary.radius = cfg.radius;
+                rosary.duration = cfg.duration;
+                
+                StatueSkillSystem::applyRosary(registry, statue, rosary);
             }
             // Add other skills here as needed
         };

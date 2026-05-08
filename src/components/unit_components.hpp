@@ -63,8 +63,8 @@ struct SpawnKnightSkill {
 };
 
 struct RosarySkill {
+    entt::entity owner{entt::null}; // The Statue that used this skill
     bool initialized{false};
-    bool isClosing{false}; // [NEW] Transition flag for shrinking effect
     float damage{10.f};
     float knockbackForce{150.f};
     float rotationSpeed{2.0f};
@@ -74,19 +74,27 @@ struct RosarySkill {
 };
 
 struct OrbitalSphere {
-    entt::entity parent{entt::null};
-    float orbitAngle{0.f};         // [NEW] Shared rotation component
-    float targetSpreadOffset{0.f}; // [NEW] Individual target offset (e.g., i * 2PI/16)
+    enum class State { Expanding, Active, Shrinking };
+    
+    entt::entity parentInstance{entt::null}; // Links to the RosarySkill instance entity
+    entt::entity ownerStatue{entt::null};   // The Statue this orbital revolves around
+    State state{State::Expanding};
+    
+    float orbitAngle{0.f};
+    float targetSpreadOffset{0.f};
     float radius{120.f};
     float rotationSpeed{2.0f};
     float knockbackForce{150.f};
     float damage{10.f};
-    float expansionProgress{0.f};  // [NEW] 0.0 (center) to 1.0 (full orbit)
+    
+    float expansionProgress{0.f};
+    float expansionSpeed{0.66f}; // 1.0 / 1.5s
+    float shrinkSpeed{1.25f};    // 1.0 / 0.8s
 };
 
 enum class TextureID : uint8_t {
     Statue = 0,
-    Enemy1,
+    GoblinJunior,
     Grass,
     Flower,
     Knight,
@@ -96,9 +104,20 @@ enum class TextureID : uint8_t {
     Count
 };
 
+// 애니메이션 정보를 담는 컴포넌트
+struct Animation {
+    int frameCount{1};
+    int framesPerRow{1}; // [NEW] 시트의 가로 프레임 개수
+    int currentFrame{0};
+    float frameDuration{0.1f};
+    float timer{0.f};
+    int frameWidth{0};
+    int frameHeight{0};
+};
+
 // 배치 렌더링을 위해 어떤 텍스처를 쓸지에 대한 식별자만 가짐
 struct SpriteData {
-    TextureID textureID{TextureID::Enemy1};
+    TextureID textureID{TextureID::GoblinJunior};
     std::string textureName; // 디버깅용
     sf::FloatRect textureRect; 
     sf::Vector2f scale{1.f, 1.f};

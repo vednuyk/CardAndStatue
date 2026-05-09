@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
 #include "ui_system.hpp"
 #include "config_manager.hpp"
 #include "localization_manager.hpp"
@@ -33,8 +34,10 @@ struct PassiveSlot {
 class CardSystem {
 public:
     CardSystem(sf::Vector2f logicalRes) : m_logicalRes(logicalRes) {
+        // [MODIFIED] Alternate between Rosary and GodRay
         for (int i = 0; i < 8; ++i) {
-            m_cards.push_back({"CARD_ROSARY", {0.f, 0.f}});
+            std::string name = (i % 2 == 0) ? "CARD_ROSARY" : "CARD_GODRAY";
+            m_cards.push_back({name, {0.f, 0.f}});
         }
         for (int i = 0; i < 4; ++i) {
             m_passiveSlots.push_back(PassiveSlot{});
@@ -53,6 +56,7 @@ public:
                         card.isHovered = false;
                         card.isDragging = true;
                         m_draggedCard = &card;
+                        m_draggedCardName = card.nameKey; // [NEW] Store name
                         m_dragOffset = card.position - uiMousePos;
                         break;
                     }
@@ -69,13 +73,19 @@ public:
                     if (slotBounds.contains(uiMousePos) && !slot.isOccupied) {
                         slot.cardNameKey = m_draggedCard->nameKey;
                         slot.isOccupied = true;
+                        
+                        // [MODIFIED] Skill specific passive timings
                         if (slot.cardNameKey == "CARD_ROSARY") {
                             slot.duration = 10.0f;
                             slot.cooldown = 5.0f;
+                        } else if (slot.cardNameKey == "CARD_GODRAY") {
+                            slot.duration = 0.1f;
+                            slot.cooldown = 1.0f;
                         } else {
                             slot.duration = 0.0f;
                             slot.cooldown = 5.0f;
                         }
+                        
                         slot.timer = 0.f;
                         m_triggeredPassiveSkills.push_back(slot.cardNameKey);
                         m_pendingPassiveDrop = true;
@@ -210,10 +220,11 @@ public:
         UISystem::render(registry, window, gameView, cardInfos, passiveInfos, font, totalTime);
     }
 
-    bool consumePendingUse() {
-        bool val = m_pendingUse;
+    // [MODIFIED] Return the skill name to apply
+    std::string consumePendingUse() {
+        if (!m_pendingUse) return "";
         m_pendingUse = false;
-        return val;
+        return m_draggedCardName;
     }
 
     bool consumePendingPassiveDrop() {
@@ -275,6 +286,7 @@ private:
     std::vector<Card> m_cards;
     std::vector<PassiveSlot> m_passiveSlots;
     Card* m_draggedCard = nullptr;
+    std::string m_draggedCardName; // [NEW]
     sf::Vector2f m_dragOffset;
     bool m_pendingUse = false;
     bool m_pendingPassiveDrop = false;

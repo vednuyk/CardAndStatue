@@ -46,6 +46,13 @@ struct SkillConfig {
         float radius = 120.0f;
         float duration = 10.0f;
     } rosary;
+
+    struct GodRay {
+        float cooldown = 0.5f;
+        float damage = 100.0f;
+        float splashRadius = 150.0f;
+        float splashRatio = 0.9f;
+    } godRay;
 };
 
 struct EnemyConfig {
@@ -174,6 +181,14 @@ private:
                 skills.rosary.rotationSpeed = r.value("rotationSpeed", skills.rosary.rotationSpeed);
                 skills.rosary.radius = r.value("radius", skills.rosary.radius);
                 skills.rosary.duration = r.value("duration", skills.rosary.duration);
+            }
+
+            if (j.contains("godRay")) {
+                auto& g = j["godRay"];
+                skills.godRay.cooldown = g.value("cooldown", skills.godRay.cooldown);
+                skills.godRay.damage = g.value("damage", skills.godRay.damage);
+                skills.godRay.splashRadius = g.value("splashRadius", skills.godRay.splashRadius);
+                skills.godRay.splashRatio = g.value("splashRatio", skills.godRay.splashRatio);
             }
             return true;
         } catch (...) { return false; }

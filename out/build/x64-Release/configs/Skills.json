@@ -1,5 +1,4 @@
 {
-
     "holy": {
         "cooldown": 5.0,
         "damage": 100.0,
@@ -15,5 +14,11 @@
         "rotationSpeed": 3.0,
         "radius": 150.0,
         "duration": 10.0
+    },
+    "godRay": {
+        "cooldown": 0.5,
+        "damage": 150.0,
+        "splashRadius": 100.0,
+        "splashRatio": 0.9
     }
 }

@@ -3,6 +3,7 @@
 #include <SFML/Graphics/Rect.hpp>
 #include <memory>
 #include <string>
+#include <entt/entt.hpp>
 
 namespace component {
 
@@ -62,6 +63,19 @@ struct SpawnKnightSkill {
     int spawnCount{3};
 };
 
+struct GodRaySkill {
+    float cooldown{0.5f};
+    float timer{0.f};
+    float damage{100.f};
+    float splashRadius{150.f};
+    float splashRatio{0.9f};
+};
+
+struct GodRayEffect {
+    float timer{0.3f};
+    float maxTime{0.3f};
+};
+
 struct RosarySkill {
     entt::entity owner{entt::null}; // The Statue that used this skill
     bool initialized{false};
@@ -101,6 +115,7 @@ enum class TextureID : uint8_t {
     FallbackRedSquare,
     RosarySphere,
     WhiteFlash,
+    GodRay,
     Count
 };
 

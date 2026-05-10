@@ -95,7 +95,6 @@ int main() {
     createColoredTex(component::TextureID::FallbackRedSquare, {32, 32}, sf::Color::Red);
     createColoredTex(component::TextureID::RosarySphere, {32, 32}, sf::Color::White, true);
     createColoredTex(component::TextureID::WhiteFlash, {32, 32}, sf::Color::White);
-    createColoredTex(component::TextureID::GodRay, {16, 256}, sf::Color(255, 255, 200, 180)); // GodRay beam
 
     sf::Font font;
     if (!font.openFromFile("C:/Windows/Fonts/malgun.ttf")) {
@@ -117,11 +116,6 @@ int main() {
     }
 
     auto statue = EntityFactory::createStatue(registry, center, configMgr.statue);
-    
-    // [MODIFIED] Register skill logics (OCP)
-    StatueSkillSystem::registerSkillLogic(StatueSkillSystem::updateHolyAttack);
-    StatueSkillSystem::registerSkillLogic(StatueSkillSystem::updateGodRay);
-    StatueSkillSystem::registerSkillLogic(StatueSkillSystem::updateSpawnKnight);
 
     float currentZoom = 1.0f;
     bool isFullscreen = true; 
@@ -190,33 +184,22 @@ int main() {
         cardSystem.update(deltaTime, window, uiView);
 
         auto applySkill = [&](const std::string& skillKey) {
+            auto cfg = configMgr.skills.rosary;
             if (skillKey == "CARD_ROSARY") {
-                auto cfg = configMgr.skills.rosary;
                 component::RosarySkill rosary;
                 rosary.damage = cfg.damage;
                 rosary.knockbackForce = cfg.knockbackForce;
                 rosary.rotationSpeed = cfg.rotationSpeed;
                 rosary.radius = cfg.radius;
                 rosary.duration = cfg.duration;
+                
                 StatueSkillSystem::applyRosary(registry, statue, rosary);
-            } else if (skillKey == "CARD_GODRAY") {
-                if (!registry.any_of<component::GodRaySkill>(statue)) {
-                    auto& gr = registry.emplace<component::GodRaySkill>(statue);
-                    gr.cooldown = configMgr.skills.godRay.cooldown;
-                    gr.damage = configMgr.skills.godRay.damage;
-                    gr.splashRadius = configMgr.skills.godRay.splashRadius;
-                    gr.splashRatio = configMgr.skills.godRay.splashRatio;
-                } else {
-                    // Refresh or stack? For now, just ensure it exists
-                    auto& gr = registry.get<component::GodRaySkill>(statue);
-                    gr.timer = gr.cooldown; // Immediate trigger
-                }
             }
+            // Add other skills here as needed
         };
 
-        std::string pendingSkill = cardSystem.consumePendingUse();
-        if (!pendingSkill.empty()) {
-            applySkill(pendingSkill);
+        if (cardSystem.consumePendingUse()) {
+            applySkill("CARD_ROSARY");
             cardSystem.removeCardUnderMouse();
         }
 

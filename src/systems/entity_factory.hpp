@@ -80,17 +80,4 @@ public:
 
         return entity;
     }
-
-    static entt::entity createGodRayEffect(entt::registry& registry, sf::Vector2f position) {
-        auto entity = registry.create();
-        registry.emplace<component::Transform>(entity, position, 0.f, 0.f);
-        registry.emplace<component::GodRayEffect>(entity);
-        
-        auto& sprite = registry.emplace<component::SpriteData>(entity);
-        sprite.textureID = component::TextureID::GodRay;
-        sprite.textureName = "GodRay";
-        sprite.scale = {0.5f, 1.5f}; // Tall beam
-        
-        return entity;
-    }
 };

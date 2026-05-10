@@ -33,8 +33,11 @@ struct PassiveSlot {
 class CardSystem {
 public:
     CardSystem(sf::Vector2f logicalRes) : m_logicalRes(logicalRes) {
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < 5; ++i) {
             m_cards.push_back({"CARD_ROSARY", {0.f, 0.f}});
+        }
+        for (int i = 0; i < 3; ++i) {
+            m_cards.push_back({"CARD_GOD_RAY", {0.f, 0.f}});
         }
         for (int i = 0; i < 4; ++i) {
             m_passiveSlots.push_back(PassiveSlot{});
@@ -96,6 +99,7 @@ public:
                     sf::Vector2f distVec = uiMousePos - dropZoneCenter;
                     if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
                         m_pendingUse = true;
+                        m_lastUsedCardKey = m_draggedCard->nameKey;
                     } else {
                         m_draggedCard->isDragging = false;
                         updateLayout();
@@ -216,6 +220,10 @@ public:
         return val;
     }
 
+    std::string getLastUsedCardKey() const {
+        return m_lastUsedCardKey;
+    }
+
     bool consumePendingPassiveDrop() {
         bool val = m_pendingPassiveDrop;
         m_pendingPassiveDrop = false;
@@ -277,6 +285,7 @@ private:
     Card* m_draggedCard = nullptr;
     sf::Vector2f m_dragOffset;
     bool m_pendingUse = false;
+    std::string m_lastUsedCardKey;
     bool m_pendingPassiveDrop = false;
     std::vector<std::string> m_triggeredPassiveSkills;
 };

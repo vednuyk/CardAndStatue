@@ -23,9 +23,16 @@ public:
             if (auto* spawn = registry.try_get<component::SpawnKnightSkill>(statueEntity)) {
                 updateSpawnKnight(registry, statueEntity, *spawn, transform, deltaTime);
             }
+
+            if (auto* godRay = registry.try_get<component::GodRaySkill>(statueEntity)) {
+                updateGodRay(registry, statueEntity, *godRay, transform, deltaTime, enemyGrid);
+            }
         });
 
-        // 2. Rosary Skill Instances Lifecycle (Independent timers)
+        // 2. God Ray Effects Lifecycle
+        updateGodRayEffects(registry, deltaTime);
+
+        // 3. Rosary Skill Instances Lifecycle (Independent timers)
         auto rosaryView = registry.view<component::RosarySkill>();
         static std::vector<entt::entity> expiredInstances;
         expiredInstances.clear();
@@ -45,7 +52,7 @@ public:
                     float targetOffset = (2.f * 3.14159f / 16.f) * i;
                     auto& orbital = registry.emplace<component::OrbitalSphere>(sphere);
                     orbital.parentInstance = instanceEntity;
-                    orbital.ownerStatue = rosary.owner; // Direct link to statue
+                    orbital.ownerStatue = rosary.owner; 
                     orbital.state = component::OrbitalSphere::State::Expanding;
                     orbital.targetSpreadOffset = targetOffset;
                     orbital.radius = rosary.radius;
@@ -67,24 +74,21 @@ public:
             }
         });
 
-        // Handle expired instances: notify their spheres and destroy the instance entity
         for (auto instance : expiredInstances) {
             auto sphereView = registry.view<component::OrbitalSphere>();
             for (auto entity : sphereView) {
                 auto& orbital = sphereView.get<component::OrbitalSphere>(entity);
                 if (orbital.parentInstance == instance) {
                     orbital.state = component::OrbitalSphere::State::Shrinking;
-                    orbital.parentInstance = entt::null; // Instance is gone
+                    orbital.parentInstance = entt::null;
                 }
             }
             registry.destroy(instance);
         }
 
-        // 3. Orbital Spheres independent logic
         updateOrbitalSpheres(registry, deltaTime, enemyGrid);
     }
 
-    // Factory method for Rosary (Independent Instance)
     static void applyRosary(entt::registry& registry, entt::entity statue, const component::RosarySkill& config) {
         auto instance = registry.create();
         auto& rosary = registry.emplace<component::RosarySkill>(instance, config);
@@ -98,19 +102,16 @@ private:
         toDestroy.clear();
 
         view.each([&](auto entity, auto& orbital, auto& trans) {
-            // Check if owner statue is still valid
             if (!registry.valid(orbital.ownerStatue)) {
                 toDestroy.push_back(entity);
                 return;
             }
 
-            // If instance is gone but we aren't shrinking, start shrinking
             if (orbital.parentInstance != entt::null && !registry.valid(orbital.parentInstance)) {
                 orbital.state = component::OrbitalSphere::State::Shrinking;
                 orbital.parentInstance = entt::null;
             }
 
-            // State management
             switch (orbital.state) {
                 case component::OrbitalSphere::State::Expanding:
                     orbital.expansionProgress = std::min(1.0f, orbital.expansionProgress + orbital.expansionSpeed * deltaTime);
@@ -169,11 +170,15 @@ private:
                 sf::Vector2f pushDir = et.position - parentTrans.position;
                 float pushDist = std::sqrt(pushDir.x * pushDir.x + pushDir.y * pushDir.y);
                 if (pushDist > 0.001f) {
+                    sf::Vector2f pushVelocity = (pushDir / pushDist) * orbital.knockbackForce;
+                    
                     if (orbital.state == component::OrbitalSphere::State::Expanding && pushDist < currentRadius) {
-                        et.position = parentTrans.position + (pushDir / pushDist) * currentRadius;
-                    } else {
-                        et.position += (pushDir / pushDist) * orbital.knockbackForce * dt;
+                        // 확장 중에는 강제로 경계선 밖으로 밀어냄
+                        pushVelocity = (pushDir / pushDist) * (currentRadius - pushDist) * (1.0f / dt);
                     }
+                    
+                    // [UNIFIED] 이제 Rosary도 Knockback 컴포넌트를 사용합니다. (매 프레임 갱신)
+                    registry.emplace_or_replace<component::Knockback>(enemy, pushVelocity, 0.05f);
                 }
             }
         });
@@ -210,5 +215,70 @@ private:
             }
             skill.timer = 0.f;
         }
+    }
+
+    static void updateGodRay(entt::registry& registry, entt::entity statue, component::GodRaySkill& skill, const component::Transform& trans, float dt, ProximityGrid& enemyGrid) {
+        skill.timer += dt;
+        if (skill.timer >= skill.cooldown) {
+            entt::entity target = entt::null;
+            float minCandsDistSq = skill.range * skill.range;
+            
+            enemyGrid.queryNearby(trans.position, [&](entt::entity enemy) {
+                if (!registry.valid(enemy)) return;
+                auto& et = registry.get<component::Transform>(enemy);
+                sf::Vector2f diff = et.position - trans.position;
+                float distSq = diff.x * diff.x + diff.y * diff.y;
+                if (distSq < minCandsDistSq) {
+                    target = enemy;
+                }
+            });
+
+            if (registry.valid(target)) {
+                auto& es = registry.get<component::UnitStats>(target);
+                auto& et = registry.get<component::Transform>(target);
+                es.currentHealth -= skill.damage;
+                es.hitFlashTimer = 0.1f;
+
+                sf::Vector2f dir = et.position - trans.position;
+                float dist = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+                sf::Vector2f pushDir(0.f, 1.0f); 
+                if (dist > 0.001f) {
+                    pushDir += (dir / dist) * 0.5f; 
+                }
+                
+                // [UNIFIED] 배율(*15.f) 제거 및 설정값 그대로 사용
+                registry.emplace_or_replace<component::Knockback>(target, pushDir * skill.knockbackForce, skill.knockbackDuration);
+
+                auto effect = registry.create();
+                registry.emplace<component::GodRayEffect>(effect, 0.4f, 0.f, target);
+                registry.emplace<component::Transform>(effect, et.position);
+                auto& sd = registry.emplace<component::SpriteData>(effect);
+                sd.textureID = component::TextureID::GodRay;
+                sd.scale = {0.5f, 1.5f}; 
+                
+                skill.timer = 0.f;
+            }
+        }
+    }
+
+    static void updateGodRayEffects(entt::registry& registry, float dt) {
+        auto view = registry.view<component::GodRayEffect, component::Transform, component::SpriteData>();
+        static std::vector<entt::entity> toDestroy;
+        toDestroy.clear();
+
+        view.each([&](auto entity, auto& effect, auto& trans, auto& sprite) {
+            effect.timer += dt;
+            if (effect.timer >= effect.duration) {
+                toDestroy.push_back(entity);
+            } else {
+                if (registry.valid(effect.target)) {
+                    trans.position = registry.get<component::Transform>(effect.target).position;
+                }
+                float alpha = 1.0f - (effect.timer / effect.duration);
+                sprite.scale.x = 0.5f * alpha; 
+            }
+        });
+
+        if (!toDestroy.empty()) registry.destroy(toDestroy.begin(), toDestroy.end());
     }
 };

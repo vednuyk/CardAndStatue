@@ -62,6 +62,21 @@ struct SpawnKnightSkill {
     int spawnCount{3};
 };
 
+struct GodRaySkill {
+    float cooldown{2.f};
+    float timer{0.f};
+    float damage{150.f};
+    float range{600.f};
+    float knockbackForce{80.f};
+    float knockbackDuration{0.2f};
+};
+
+struct GodRayEffect {
+    float duration{0.4f};
+    float timer{0.f};
+    entt::entity target{entt::null};
+};
+
 struct RosarySkill {
     entt::entity owner{entt::null}; // The Statue that used this skill
     bool initialized{false};
@@ -100,6 +115,7 @@ enum class TextureID : uint8_t {
     Knight,
     FallbackRedSquare,
     RosarySphere,
+    GodRay,
     WhiteFlash,
     Count
 };
@@ -131,6 +147,17 @@ struct HelperTag {};
 
 struct Target {
     entt::entity entity{entt::null};
+};
+
+struct Knockback {
+    sf::Vector2f force{0.f, 0.f};
+    float duration{0.f};
+};
+
+// [NEW] 전역적으로 접근 가능한 성상(Statue)의 위치 (EnTT Context 전용)
+struct GlobalTargetLocation {
+    sf::Vector2f position{0.f, 0.f};
+    sf::FloatRect bounds; // 충돌 박스 영역 (추가 최적화용)
 };
 
 } // namespace component

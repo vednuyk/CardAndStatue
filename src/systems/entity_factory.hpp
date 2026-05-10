@@ -20,6 +20,15 @@ public:
         spriteData.textureID = component::TextureID::Statue;
         spriteData.textureName = "Statue";
         spriteData.scale = {cfg.scale, cfg.scale};
+
+        // [OPTIMIZED] 전역 타겟 위치 캐싱
+        component::GlobalTargetLocation target;
+        target.position = position + cfg.boxOffset;
+        target.bounds = sf::FloatRect(
+            {position.x + cfg.boxOffset.x - cfg.boxSize.x / 2.f, position.y + cfg.boxOffset.y - cfg.boxSize.y / 2.f},
+            cfg.boxSize
+        );
+        registry.ctx().emplace<component::GlobalTargetLocation>(target);
         
         return entity;
     }

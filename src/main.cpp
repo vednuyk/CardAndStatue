@@ -194,12 +194,23 @@ int main() {
                 rosary.duration = cfg.duration;
                 
                 StatueSkillSystem::applyRosary(registry, statue, rosary);
+            } else if (skillKey == "CARD_GOD_RAY") {
+                // Add GodRaySkill component to the Statue with config values
+                if (!registry.any_of<component::GodRaySkill>(statue)) {
+                    auto& gcfg = configMgr.skills.godRay;
+                    auto& godRay = registry.emplace<component::GodRaySkill>(statue);
+                    godRay.cooldown = gcfg.cooldown;
+                    godRay.damage = gcfg.damage;
+                    godRay.range = gcfg.range;
+                    godRay.knockbackForce = gcfg.knockbackForce;
+                    godRay.knockbackDuration = gcfg.knockbackDuration;
+                }
             }
-            // Add other skills here as needed
         };
 
         if (cardSystem.consumePendingUse()) {
-            applySkill("CARD_ROSARY");
+            std::string key = cardSystem.getLastUsedCardKey();
+            applySkill(key);
             cardSystem.removeCardUnderMouse();
         }
 

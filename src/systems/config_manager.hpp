@@ -65,6 +65,7 @@ struct EnemyConfig {
     float attackRange = 50.0f;
     float scale = 0.1f;
     float radius = 3.0f;
+    sf::Vector2f pivotOffset = { 0.f, 0.f }; // [NEW] Data-driven pivot for visuals
     std::string texturePath;
 
     struct AnimationData {
@@ -213,6 +214,11 @@ private:
                     cfg.scale = j.value("scale", cfg.scale);
                     cfg.radius = j.value("radius", cfg.radius);
                     cfg.texturePath = j.value("texturePath", "");
+
+                    if (j.contains("pivotOffset")) {
+                        cfg.pivotOffset.x = j["pivotOffset"].value("x", 0.f);
+                        cfg.pivotOffset.y = j["pivotOffset"].value("y", 0.f);
+                    }
 
                     if (j.contains("animation")) {
                         auto& anim = j["animation"];

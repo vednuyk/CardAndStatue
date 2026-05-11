@@ -44,6 +44,7 @@ public:
         registry.emplace<component::UnitStats>(entity, cfg.maxHealth, cfg.maxHealth, cfg.speed, cfg.damage, cfg.attackSpeed, cfg.attackRange);
         registry.emplace<component::EnemyTag>(entity);
         registry.emplace<component::Velocity>(entity, sf::Vector2f(0.f, 0.f));
+        registry.emplace<component::Pivot>(entity, cfg.pivotOffset);
         
         auto& sprite = registry.emplace<component::SpriteData>(entity);
         

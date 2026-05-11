@@ -16,9 +16,6 @@ def load_json_with_comments(path):
         return json.loads(content)
 
 def save_json_with_comments(path, data, original_content):
-    # This is a simplified saver that won't preserve all comments perfectly, 
-    # but we'll try to just overwrite the values in the JSON structure.
-    # For simplicity in this tool, we will overwrite the file.
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     print(f"Saved to {os.path.basename(path)}!")
@@ -26,7 +23,7 @@ def save_json_with_comments(path, data, original_content):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption("Enemy Sphere Collider Viewer (W/S: Radius, Q/E: Scale, TAB: Next Enemy, Enter: Save)")
+    pygame.display.set_caption("Enemy Viewer (W/S: Rad, Q/E: Scale, Arrows: Collider, IJKL: Pivot, Enter: Save)")
     clock = pygame.time.Clock()
 
     # Get list of enemy configs
@@ -42,23 +39,17 @@ def main():
         file_path = os.path.join(ENEMIES_CONFIG_DIR, enemy_files[current_idx])
         config = load_json_with_comments(file_path)
         
-        # Load image (handle different path structures)
         tex_path = config.get("texturePath", "")
-        # Try absolute or relative to root
         full_tex_path = os.path.join(ROOT_DIR, tex_path)
         if not os.path.exists(full_tex_path):
-            # Fallback for assets/IMG/Enemy/Enemy1.png if config says assets/Enemy/Enemy1.png
             full_tex_path = os.path.join(ROOT_DIR, 'assets', 'IMG', 'Enemy', os.path.basename(tex_path))
 
         try:
             full_img = pygame.image.load(full_tex_path).convert_alpha()
-            
-            # --- Sprite Sheet Handling ---
             if "animation" in config:
                 fw = config["animation"].get("frameWidth")
                 fh = config["animation"].get("frameHeight")
                 if fw and fh:
-                    # Crop the first frame
                     img = pygame.Surface((fw, fh), pygame.SRCALPHA)
                     img.blit(full_img, (0, 0), (0, 0, fw, fh))
                 else:
@@ -67,13 +58,13 @@ def main():
                 img = full_img
         except Exception as e:
             print(f"Error loading image {full_tex_path}: {e}")
-            # Placeholder if image not found
             img = pygame.Surface((100, 100))
             img.fill((255, 0, 255))
         
-        # Initialize offset if not present
         if "offset" not in config:
             config["offset"] = {"x": 0.0, "y": 0.0}
+        if "pivotOffset" not in config:
+            config["pivotOffset"] = {"x": 0.0, "y": 0.0}
         
         return config, img, file_path
 
@@ -83,7 +74,6 @@ def main():
     while running:
         scale = config.get("scale", 1.0)
         radius = config.get("radius", 1.0)
-        offset = config["offset"]
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -108,33 +98,45 @@ def main():
                     config["offset"]["x"] -= 1.0
                 elif event.key == pygame.K_RIGHT:
                     config["offset"]["x"] += 1.0
+                elif event.key == pygame.K_i:
+                    config["pivotOffset"]["y"] -= 1.0
+                elif event.key == pygame.K_k:
+                    config["pivotOffset"]["y"] += 1.0
+                elif event.key == pygame.K_j:
+                    config["pivotOffset"]["x"] -= 1.0
+                elif event.key == pygame.K_l:
+                    config["pivotOffset"]["x"] += 1.0
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     save_json_with_comments(current_file_path, config, None)
 
         screen.fill((40, 40, 40))
 
-        # Scale image
         w, h = original_img.get_size()
         scaled_img = pygame.transform.scale(original_img, (int(w * scale), int(h * scale)))
         rect = scaled_img.get_rect(center=(400, 300))
         screen.blit(scaled_img, rect.topleft)
 
-        # Draw Center
+        # Center (Red)
         pygame.draw.circle(screen, (255, 0, 0), (400, 300), 2)
 
-        # Draw Sphere Collider (Cyan)
+        # Collider (Cyan)
         col_x = 400 + config["offset"]["x"]
         col_y = 300 + config["offset"]["y"]
         pygame.draw.circle(screen, (0, 255, 255), (int(col_x), int(col_y)), int(radius), 2)
 
-        # Info
+        # Pivot (Yellow Crosshair)
+        piv_x = 400 + config["pivotOffset"]["x"]
+        piv_y = 300 + config["pivotOffset"]["y"]
+        pygame.draw.line(screen, (255, 255, 0), (piv_x - 10, piv_y), (piv_x + 10, piv_y), 2)
+        pygame.draw.line(screen, (255, 255, 0), (piv_x, piv_y - 10), (piv_x, piv_y + 10), 2)
+
         texts = [
             f"Enemy: {enemy_files[current_idx]}",
             f"Radius (W/S): {radius:.1f}",
             f"Scale (Q/E): {scale:.2f}",
-            f"Offset (Arrows): {config['offset']['x']}, {config['offset']['y']}",
-            "TAB: Switch Enemy",
-            "ENTER: Save to JSON"
+            f"Col Offset (Arrows): {config['offset']['x']}, {config['offset']['y']}",
+            f"Pivot Offset (IJKL): {config['pivotOffset']['x']}, {config['pivotOffset']['y']}",
+            "TAB: Switch Enemy", "ENTER: Save JSON"
         ]
         for i, t in enumerate(texts):
             img_text = font.render(t, True, (255, 255, 255))
@@ -142,7 +144,6 @@ def main():
 
         pygame.display.flip()
         clock.tick(60)
-
     pygame.quit()
 
 if __name__ == "__main__":

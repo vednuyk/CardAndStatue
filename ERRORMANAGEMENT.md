@@ -149,3 +149,18 @@
 
 ---
 *(Add new entries here as errors occur)*
+
+### [2026-05-11] Compilation Errors: SFML Type Mismatch and Syntax Duplication
+- **Symptoms:** 
+    - `Error C2039: 'Uint8': is not a member of 'sf'` in `main.cpp`.
+    - `Error C2059: syntax error: 'if'` and `Error C2238` at the end of `statue_skill_system.hpp`.
+- **Root Cause Analysis:**
+    - **Type Mismatch:** Assumed `sf::Uint8` existed in SFML 3.x based on legacy patterns (SFML 2.x), but SFML 3.x uses standard C++ types or has changed namespace members. In this project's environment, `uint8_t` is the standard for color alpha casting.
+    - **Syntax Duplication:** A `replace` operation on `statue_skill_system.hpp` accidentally appended duplicate cleanup code and mismatched braces at the end of the file due to an overlapping match pattern.
+- **Resolution:**
+    - Replaced all occurrences of `sf::Uint8` with `uint8_t` in `main.cpp`.
+    - Cleaned up the trailing garbage code and restored the class structure in `statue_skill_system.hpp` using a targeted `replace`.
+- **Prevention Strategy:**
+    - **Verify External Types:** Always cross-reference documentation or existing code for external library types (like SFML) rather than assuming legacy naming conventions.
+    - **Tool Precision:** When performing `replace` near file boundaries or closing braces, use wider context to ensure the tool doesn't misidentify the insertion point or leave trailing fragments.
+    - **Post-Edit Sanity Check:** Review the end of the file after any multi-line `replace` to catch trailing syntax corruption immediately.

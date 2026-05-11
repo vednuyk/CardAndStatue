@@ -75,6 +75,9 @@ public:
                         if (slot.cardNameKey == "CARD_ROSARY") {
                             slot.duration = 10.0f;
                             slot.cooldown = 5.0f;
+                        } else if (slot.cardNameKey == "CARD_GOD_RAY") {
+                            slot.duration = 10.0f;
+                            slot.cooldown = 5.0f;
                         } else {
                             slot.duration = 0.0f;
                             slot.cooldown = 5.0f;

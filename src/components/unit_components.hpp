@@ -67,14 +67,24 @@ struct GodRaySkill {
     float timer{0.f};
     float damage{150.f};
     float range{600.f};
-    float knockbackForce{80.f};
-    float knockbackDuration{0.2f};
+    float stunDuration{0.5f};
+    float remainingTime{10.f}; // [NEW] Total duration of the skill instance
+    entt::entity owner{entt::null}; 
+};
+
+struct Stun {
+    float duration{0.f};
+};
+
+struct Pivot {
+    sf::Vector2f offset{0.f, 0.f};
 };
 
 struct GodRayEffect {
     float duration{0.4f};
     float timer{0.f};
     entt::entity target{entt::null};
+    sf::Vector2f lastTargetPos{0.f, 0.f}; // [NEW] Store last position to persist after target death
 };
 
 struct RosarySkill {

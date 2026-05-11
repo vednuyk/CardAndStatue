@@ -52,6 +52,11 @@ private:
     static void updatePlayerUnitAI(entt::registry& registry, ProximityGrid& enemyGrid) {
         auto playerUnitView = registry.view<component::PlayerUnitTag, component::Transform, component::UnitStats, component::Velocity>();
         playerUnitView.each([&](auto entity, auto& trans, auto& stats, auto& vel) {
+            // [NEW] Stun Logic: Skip AI if stunned
+            if (registry.any_of<component::Stun>(entity)) {
+                vel.value = {0.f, 0.f};
+                return;
+            }
             entt::entity nearestEnemy = entt::null;
             float minDistSq = stats.attackRange * stats.attackRange * 4.f;
 

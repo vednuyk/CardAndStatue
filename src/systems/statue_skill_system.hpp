@@ -23,16 +23,35 @@ public:
             if (auto* spawn = registry.try_get<component::SpawnKnightSkill>(statueEntity)) {
                 updateSpawnKnight(registry, statueEntity, *spawn, transform, deltaTime);
             }
+        });
 
-            if (auto* godRay = registry.try_get<component::GodRaySkill>(statueEntity)) {
-                updateGodRay(registry, statueEntity, *godRay, transform, deltaTime, enemyGrid);
+        // 2. God Ray Instances Update (Enables Stacking and Duration)
+        auto godRayView = registry.view<component::GodRaySkill>();
+        static std::vector<entt::entity> expiredGodRays;
+        expiredGodRays.clear();
+
+        godRayView.each([&](auto entity, auto& skill) {
+            if (registry.valid(skill.owner)) {
+                skill.remainingTime -= deltaTime;
+                if (skill.remainingTime <= 0.f) {
+                    expiredGodRays.push_back(entity);
+                } else {
+                    auto& statueTrans = registry.get<component::Transform>(skill.owner);
+                    updateGodRay(registry, entity, skill, statueTrans, deltaTime, enemyGrid);
+                }
+            } else {
+                expiredGodRays.push_back(entity);
             }
         });
 
-        // 2. God Ray Effects Lifecycle
+        if (!expiredGodRays.empty()) {
+            registry.destroy(expiredGodRays.begin(), expiredGodRays.end());
+        }
+
+        // 3. God Ray Effects Lifecycle
         updateGodRayEffects(registry, deltaTime);
 
-        // 3. Rosary Skill Instances Lifecycle (Independent timers)
+        // 4. Rosary Skill Instances Lifecycle (Independent timers)
         auto rosaryView = registry.view<component::RosarySkill>();
         static std::vector<entt::entity> expiredInstances;
         expiredInstances.clear();
@@ -173,11 +192,9 @@ private:
                     sf::Vector2f pushVelocity = (pushDir / pushDist) * orbital.knockbackForce;
                     
                     if (orbital.state == component::OrbitalSphere::State::Expanding && pushDist < currentRadius) {
-                        // 확장 중에는 강제로 경계선 밖으로 밀어냄
                         pushVelocity = (pushDir / pushDist) * (currentRadius - pushDist) * (1.0f / dt);
                     }
                     
-                    // [UNIFIED] 이제 Rosary도 Knockback 컴포넌트를 사용합니다. (매 프레임 갱신)
                     registry.emplace_or_replace<component::Knockback>(enemy, pushVelocity, 0.05f);
                 }
             }
@@ -217,44 +234,50 @@ private:
         }
     }
 
-    static void updateGodRay(entt::registry& registry, entt::entity statue, component::GodRaySkill& skill, const component::Transform& trans, float dt, ProximityGrid& enemyGrid) {
+    static void updateGodRay(entt::registry& registry, entt::entity instance, component::GodRaySkill& skill, const component::Transform& statueTrans, float dt, ProximityGrid& enemyGrid) {
         skill.timer += dt;
         if (skill.timer >= skill.cooldown) {
-            entt::entity target = entt::null;
-            float minCandsDistSq = skill.range * skill.range;
+            std::vector<entt::entity> potentialTargets;
             
-            enemyGrid.queryNearby(trans.position, [&](entt::entity enemy) {
+            // [RANDOM TARGETING] Collect all enemies within range
+            enemyGrid.queryRange(statueTrans.position, skill.range, [&](entt::entity enemy) {
                 if (!registry.valid(enemy)) return;
-                auto& et = registry.get<component::Transform>(enemy);
-                sf::Vector2f diff = et.position - trans.position;
-                float distSq = diff.x * diff.x + diff.y * diff.y;
-                if (distSq < minCandsDistSq) {
-                    target = enemy;
-                }
+                potentialTargets.push_back(enemy);
             });
 
-            if (registry.valid(target)) {
+            if (!potentialTargets.empty()) {
+                // Pick one at random
+                static std::mt19937 rng(std::random_device{}());
+                std::uniform_int_distribution<size_t> dist(0, potentialTargets.size() - 1);
+                entt::entity target = potentialTargets[dist(rng)];
+
                 auto& es = registry.get<component::UnitStats>(target);
                 auto& et = registry.get<component::Transform>(target);
+                
+                // [NEW] Use Pivot offset for exact alignment at target's feet
+                sf::Vector2f pivotPos = et.position;
+                if (auto* pivot = registry.try_get<component::Pivot>(target)) {
+                    pivotPos += pivot->offset;
+                }
+
                 es.currentHealth -= skill.damage;
                 es.hitFlashTimer = 0.1f;
 
-                sf::Vector2f dir = et.position - trans.position;
-                float dist = std::sqrt(dir.x * dir.x + dir.y * dir.y);
-                sf::Vector2f pushDir(0.f, 1.0f); 
-                if (dist > 0.001f) {
-                    pushDir += (dir / dist) * 0.5f; 
-                }
-                
-                // [UNIFIED] 배율(*15.f) 제거 및 설정값 그대로 사용
-                registry.emplace_or_replace<component::Knockback>(target, pushDir * skill.knockbackForce, skill.knockbackDuration);
+                // [REPLACED] Knockback -> Stun/Stiffness
+                registry.emplace_or_replace<component::Stun>(target, skill.stunDuration);
 
+                // Create "Baptism" effect above the target
                 auto effect = registry.create();
-                registry.emplace<component::GodRayEffect>(effect, 0.4f, 0.f, target);
-                registry.emplace<component::Transform>(effect, et.position);
+                auto& effectComp = registry.emplace<component::GodRayEffect>(effect, 0.5f, 0.f, target);
+                effectComp.lastTargetPos = pivotPos; // Anchor to pivot
+                
+                // Half-height for scale.y 0.5 is 128
+                // Position center so that bottom is exactly at pivotPos
+                registry.emplace<component::Transform>(effect, pivotPos - sf::Vector2f(0.f, 128.f)); 
+                
                 auto& sd = registry.emplace<component::SpriteData>(effect);
                 sd.textureID = component::TextureID::GodRay;
-                sd.scale = {0.5f, 1.5f}; 
+                sd.scale = {0.2f, 0.5f}; 
                 
                 skill.timer = 0.f;
             }
@@ -271,11 +294,39 @@ private:
             if (effect.timer >= effect.duration) {
                 toDestroy.push_back(entity);
             } else {
+                sf::Vector2f refPos = effect.lastTargetPos;
                 if (registry.valid(effect.target)) {
-                    trans.position = registry.get<component::Transform>(effect.target).position;
+                    auto& et = registry.get<component::Transform>(effect.target);
+                    refPos = et.position;
+                    // [FIX] Always apply Pivot offset if available to track the specific enemy point
+                    if (auto* pivot = registry.try_get<component::Pivot>(effect.target)) {
+                        refPos += pivot->offset;
+                    }
+                    effect.lastTargetPos = refPos;
                 }
-                float alpha = 1.0f - (effect.timer / effect.duration);
-                sprite.scale.x = 0.5f * alpha; 
+                
+                float progress = effect.timer / effect.duration;
+                float targetScaleX = 1.2f;
+                float currentScaleY = 0.5f;
+
+                if (progress < 0.2f) {
+                    float t = progress / 0.2f;
+                    sprite.scale.x = 0.2f + (targetScaleX - 0.2f) * t; 
+                } else if (progress < 0.7f) {
+                    static std::mt19937 gen(1337);
+                    std::uniform_real_distribution<float> dis(0.95f, 1.05f);
+                    sprite.scale.x = targetScaleX * dis(gen); 
+                } else {
+                    float t = (progress - 0.7f) / 0.3f;
+                    sprite.scale.x = targetScaleX * (1.0f - t);
+                    currentScaleY = 0.5f * (1.0f - t * 0.5f);
+                }
+                sprite.scale.y = currentScaleY;
+
+                // Anchoring: Keep the bottom of the beam exactly at refPos (the Pivot)
+                // Beam height is 512. Visual half-height = (512 * scale.y) / 2
+                float hh = (512.f * sprite.scale.y) / 2.f;
+                trans.position = refPos - sf::Vector2f(0.f, hh);
             }
         });
 

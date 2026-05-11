@@ -27,14 +27,16 @@ public:
         }
     }
 
-    // 주변 3x3 셀 탐색
+    // [NEW] 가변 범위 탐색: 주어진 사거리에 맞춰 셀 범위를 계산
     template <typename Func>
-    void queryNearby(sf::Vector2f pos, Func func) const {
+    void queryRange(sf::Vector2f pos, float range, Func func) const {
         int x = static_cast<int>(pos.x) / CELL_SIZE + OFFSET;
         int y = static_cast<int>(pos.y) / CELL_SIZE + OFFSET;
 
-        for (int dy = -1; dy <= 1; ++dy) {
-            for (int dx = -1; dx <= 1; ++dx) {
+        int cellRange = static_cast<int>(std::ceil(range / CELL_SIZE));
+        
+        for (int dy = -cellRange; dy <= cellRange; ++dy) {
+            for (int dx = -cellRange; dx <= cellRange; ++dx) {
                 int nx = x + dx;
                 int ny = y + dy;
                 if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
@@ -45,6 +47,12 @@ public:
                 }
             }
         }
+    }
+
+    // 주변 3x3 셀 탐색 (기존 코드 유지)
+    template <typename Func>
+    void queryNearby(sf::Vector2f pos, Func func) const {
+        queryRange(pos, static_cast<float>(CELL_SIZE), func);
     }
 
 private:

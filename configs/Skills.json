@@ -17,7 +17,7 @@
         "duration": 10.0
     },
     "godRay": {
-        "cooldown": 1.5,
+        "cooldown": 0.5,
         "damage": 10.0,
         "range": 700.0,
         "knockbackForce": 1200.0,

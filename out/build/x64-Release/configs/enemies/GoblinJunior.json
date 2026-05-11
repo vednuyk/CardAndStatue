@@ -13,6 +13,10 @@
     "frameWidth": 32,
     "frameHeight": 32
   },
+  "pivotOffset": {
+    "x": 0.0,
+    "y": 19.0
+  },
   "offset": {
     "x": 0.0,
     "y": 0.0

@@ -96,6 +96,47 @@ int main() {
     createColoredTex(component::TextureID::RosarySphere, {32, 32}, sf::Color::White, true);
     createColoredTex(component::TextureID::WhiteFlash, {32, 32}, sf::Color::White);
 
+    // [ENHANCED] GodRay: Procedural beam with gradients for a "Divine" look
+    {
+        sf::Vector2u size(128, 512);
+        sf::Image img(size, sf::Color::Transparent);
+        for (unsigned int y = 0; y < size.y; ++y) {
+            for (unsigned int x = 0; x < size.x; ++x) {
+                // Horizontal gradient (center is bright but translucent)
+                float dx = (static_cast<float>(x) - size.x / 2.f) / (size.x / 2.f);
+                float horizontalAlpha = std::max(0.f, 1.f - std::abs(dx));
+                horizontalAlpha = std::pow(horizontalAlpha, 3.0f); // Softer, thinner beam edges
+
+                // Vertical gradient: Asymmetric fade (Sky at top is long fade, Head at bottom is sharp)
+                float dy = static_cast<float>(y) / size.y;
+                float verticalAlpha;
+                if (dy > 0.8f) {
+                    verticalAlpha = 1.0f;
+                } else {
+                    verticalAlpha = std::pow(dy / 0.8f, 2.0f);
+                }
+
+                float finalAlpha = horizontalAlpha * verticalAlpha;
+                
+                // Color: Golden-White center (Balanced for intensity and visibility)
+                sf::Color beamColor;
+                if (std::abs(dx) < 0.2f) {
+                    // Core: more solid golden white
+                    beamColor = sf::Color(255, 255, 230, static_cast<uint8_t>(finalAlpha * 210));
+                } else {
+                    // Outer: strong glowing yellow
+                    beamColor = sf::Color(255, 220, 50, static_cast<uint8_t>(finalAlpha * 230));
+                }
+                img.setPixel({x, y}, beamColor);
+            }
+        }
+        auto tex = std::make_unique<sf::Texture>();
+        if (tex->loadFromImage(img)) {
+            textureMap[component::TextureID::GodRay] = tex.get();
+            textureStorage.push_back(std::move(tex));
+        }
+    }
+
     sf::Font font;
     if (!font.openFromFile("C:/Windows/Fonts/malgun.ttf")) {
         std::cerr << "Warning: Could not load malgun.ttf" << std::endl;
@@ -195,19 +236,36 @@ int main() {
                 
                 StatueSkillSystem::applyRosary(registry, statue, rosary);
             } else if (skillKey == "CARD_GOD_RAY") {
-                // Add GodRaySkill component to the Statue with config values
-                if (!registry.any_of<component::GodRaySkill>(statue)) {
-                    auto& gcfg = configMgr.skills.godRay;
-                    auto& godRay = registry.emplace<component::GodRaySkill>(statue);
-                    godRay.cooldown = gcfg.cooldown;
-                    godRay.damage = gcfg.damage;
-                    godRay.range = gcfg.range;
-                    godRay.knockbackForce = gcfg.knockbackForce;
-                    godRay.knockbackDuration = gcfg.knockbackDuration;
+                // Create a separate instance for GodRay to support STACKING and DURATION
+                auto instance = registry.create();
+                auto& gcfg = configMgr.skills.godRay;
+                auto& godRay = registry.emplace<component::GodRaySkill>(instance);
+                godRay.owner = statue;
+                godRay.cooldown = gcfg.cooldown;
+                godRay.damage = gcfg.damage;
+                godRay.range = gcfg.range;
+                godRay.stunDuration = 0.5f; 
+                godRay.remainingTime = 10.0f; // Default 10s duration if not in config
+                godRay.timer = gcfg.cooldown; // [IMMEDIATE]
+            } else if (skillKey == "CARD_HOLY") {
+                if (!registry.any_of<component::HolyAttackSkill>(statue)) {
+                    auto& hcfg = configMgr.skills.holy;
+                    auto& holy = registry.emplace<component::HolyAttackSkill>(statue);
+                    holy.cooldown = hcfg.cooldown;
+                    holy.damage = hcfg.damage;
+                    holy.radius = hcfg.radius;
+                    holy.timer = hcfg.cooldown; // [IMMEDIATE]
+                }
+            } else if (skillKey == "CARD_SPAWN_KNIGHT") {
+                if (!registry.any_of<component::SpawnKnightSkill>(statue)) {
+                    auto& scfg = configMgr.skills.spawnKnight;
+                    auto& spawn = registry.emplace<component::SpawnKnightSkill>(statue);
+                    spawn.cooldown = scfg.cooldown;
+                    spawn.spawnCount = scfg.spawnCount;
+                    spawn.timer = scfg.cooldown; // [IMMEDIATE]
                 }
             }
-        };
-
+            };
         if (cardSystem.consumePendingUse()) {
             std::string key = cardSystem.getLastUsedCardKey();
             applySkill(key);

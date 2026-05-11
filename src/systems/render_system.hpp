@@ -76,8 +76,8 @@ private:
             float hh = (texRect.size.y * spriteData.scale.y) / 2.f;
 
             float depth = transform.position.y + hh;
-            if (registry.any_of<component::OrbitalSphere>(entity)) {
-                depth += 100000.f; // Force skills to top
+            if (registry.any_of<component::OrbitalSphere, component::GodRayEffect>(entity)) {
+                depth += 100000.f; // Force skills/effects to top
             }
 
             renderNodes.push_back({entity, depth, tex, texRect, {hw, hh}, vertColor});

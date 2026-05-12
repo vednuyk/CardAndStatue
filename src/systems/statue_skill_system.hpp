@@ -278,6 +278,16 @@ private:
                 auto& sd = registry.emplace<component::SpriteData>(effect);
                 sd.textureID = component::TextureID::GodRay;
                 sd.scale = {0.2f, 0.5f}; 
+
+                // [NEW] Create Ground Impact Aura
+                auto aura = registry.create();
+                registry.emplace<component::GodRayEffect>(aura, 0.5f, 0.f, target);
+                registry.get<component::GodRayEffect>(aura).lastTargetPos = pivotPos;
+                registry.emplace<component::Transform>(aura, pivotPos);
+                
+                auto& asd = registry.emplace<component::SpriteData>(aura);
+                asd.textureID = component::TextureID::GodRayImpact;
+                asd.scale = {0.1f, 0.05f}; // Start very small and flat on ground
                 
                 skill.timer = 0.f;
             }
@@ -307,26 +317,42 @@ private:
                 
                 float progress = effect.timer / effect.duration;
                 float targetScaleX = 1.2f;
-                float currentScaleY = 0.5f;
 
-                if (progress < 0.2f) {
-                    float t = progress / 0.2f;
-                    sprite.scale.x = 0.2f + (targetScaleX - 0.2f) * t; 
-                } else if (progress < 0.7f) {
-                    static std::mt19937 gen(1337);
-                    std::uniform_real_distribution<float> dis(0.95f, 1.05f);
-                    sprite.scale.x = targetScaleX * dis(gen); 
-                } else {
-                    float t = (progress - 0.7f) / 0.3f;
-                    sprite.scale.x = targetScaleX * (1.0f - t);
-                    currentScaleY = 0.5f * (1.0f - t * 0.5f);
+                // [NEW] Handle Beam vs Aura distinct animations
+                if (sprite.textureID == component::TextureID::GodRay) {
+                    float currentScaleY = 0.5f;
+                    if (progress < 0.2f) {
+                        float t = progress / 0.2f;
+                        sprite.scale.x = 0.2f + (targetScaleX - 0.2f) * t; 
+                    } else if (progress < 0.7f) {
+                        static std::mt19937 gen(1337);
+                        std::uniform_real_distribution<float> dis(0.95f, 1.05f);
+                        sprite.scale.x = targetScaleX * dis(gen); 
+                    } else {
+                        float t = (progress - 0.7f) / 0.3f;
+                        sprite.scale.x = targetScaleX * (1.0f - t);
+                        currentScaleY = 0.5f * (1.0f - t * 0.5f);
+                    }
+                    sprite.scale.y = currentScaleY;
+
+                    // Anchoring: Keep the bottom of the beam exactly at refPos (the Pivot)
+                    float hh = (512.f * sprite.scale.y) / 2.f;
+                    trans.position = refPos - sf::Vector2f(0.f, hh);
+                } else if (sprite.textureID == component::TextureID::GodRayImpact) {
+                    // Aura Animation: Smooth Ethereal Glow expansion
+                    if (progress < 0.25f) {
+                        // Gentle Fade-in & Expand
+                        float t = progress / 0.25f;
+                        sprite.scale.x = 0.4f + 1.0f * t; 
+                        sprite.scale.y = 0.2f + 0.5f * t;
+                    } else {
+                        // Long Fade-out
+                        float t = (progress - 0.25f) / 0.75f;
+                        sprite.scale.x = 1.4f * (1.0f + t * 0.2f); // Continue slow growth
+                        sprite.scale.y = 0.7f * (1.0f - t);        // Natural fade
+                    }
+                    trans.position = refPos; 
                 }
-                sprite.scale.y = currentScaleY;
-
-                // Anchoring: Keep the bottom of the beam exactly at refPos (the Pivot)
-                // Beam height is 512. Visual half-height = (512 * scale.y) / 2
-                float hh = (512.f * sprite.scale.y) / 2.f;
-                trans.position = refPos - sf::Vector2f(0.f, hh);
             }
         });
 

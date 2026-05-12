@@ -137,6 +137,38 @@ int main() {
         }
     }
 
+    // [FINAL POLISH] GodRayImpact: Extremely soft, translucent golden glow
+    {
+        sf::Vector2u size(256, 256);
+        sf::Image img(size, sf::Color::Transparent);
+        sf::Vector2f center(128.f, 128.f);
+        float maxRadius = 120.f;
+        
+        for (unsigned int y = 0; y < size.y; ++y) {
+            for (unsigned int x = 0; x < size.x; ++x) {
+                float dx = static_cast<float>(x) - center.x;
+                float dy = static_cast<float>(y) - center.y;
+                float dist = std::sqrt(dx*dx + dy*dy);
+                
+                if (dist < maxRadius) {
+                    // Ultra-soft exponential falloff (power 3.0) for a misty look
+                    float alpha = std::pow(1.f - (dist / maxRadius), 3.0f);
+                    
+                    // Golden-Orange glow with very low base alpha
+                    // This ensures it looks like light hitting the ground, not a solid object
+                    sf::Color color = sf::Color(255, 210, 50, static_cast<uint8_t>(alpha * 110)); 
+                    img.setPixel({x, y}, color);
+                }
+            }
+        }
+
+        auto tex = std::make_unique<sf::Texture>();
+        if (tex->loadFromImage(img)) {
+            textureMap[component::TextureID::GodRayImpact] = tex.get();
+            textureStorage.push_back(std::move(tex));
+        }
+    }
+
     sf::Font font;
     if (!font.openFromFile("C:/Windows/Fonts/malgun.ttf")) {
         std::cerr << "Warning: Could not load malgun.ttf" << std::endl;

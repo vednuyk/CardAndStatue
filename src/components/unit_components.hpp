@@ -126,6 +126,7 @@ enum class TextureID : uint8_t {
     FallbackRedSquare,
     RosarySphere,
     GodRay,
+    GodRayImpact,
     WhiteFlash,
     Count
 };

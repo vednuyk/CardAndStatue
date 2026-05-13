@@ -7,6 +7,8 @@
 #include "../../components/unit_components.hpp"
 #include "../proximity_grid.hpp"
 
+#include "../unit_combat_system.hpp"
+
 class RosarySystem {
 public:
     static void update(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
@@ -146,22 +148,21 @@ private:
             float totalRadius = beadVisualRadius + et.radius;
 
             if (distSq < totalRadius * totalRadius) {
-                auto& de = registry.get_or_emplace<component::DamagedEvent>(enemy);
-                de.addDamage(damage, 0.2f);
-
-                sf::Vector2f pushDir = et.position - parentTrans.position;
-                float pushDistSq = pushDir.x * pushDir.x + pushDir.y * pushDir.y;
-                if (pushDistSq > 0.0001f) {
-                    float pushDist = std::sqrt(pushDistSq);
-                    sf::Vector2f normPushDir = pushDir / pushDist;
-                    sf::Vector2f finalVel;
-                    if (pushDist < currentRadius) {
-                        float speed = (currentRadius - pushDist) * (1.0f / dt);
-                        finalVel = normPushDir * std::max(knockback, speed);
-                    } else {
-                        finalVel = normPushDir * knockback;
+                if (UnitCombatSystem::applyDamage(registry, enemy, damage, 0.2f)) {
+                    sf::Vector2f pushDir = et.position - parentTrans.position;
+                    float pushDistSq = pushDir.x * pushDir.x + pushDir.y * pushDir.y;
+                    if (pushDistSq > 0.0001f) {
+                        float pushDist = std::sqrt(pushDistSq);
+                        sf::Vector2f normPushDir = pushDir / pushDist;
+                        sf::Vector2f finalVel;
+                        if (pushDist < currentRadius) {
+                            float speed = (currentRadius - pushDist) * (1.0f / dt);
+                            finalVel = normPushDir * std::max(knockback, speed);
+                        } else {
+                            finalVel = normPushDir * knockback;
+                        }
+                        registry.get<component::DamagedEvent>(enemy).addKnockback(finalVel);
                     }
-                    de.addKnockback(finalVel);
                 }
             }
         });

@@ -248,6 +248,7 @@ int main() {
     FPSDisplay fpsDisplay;
     WaveSystem waveSystem(configMgr.waves);
     auto enemyGrid = std::make_unique<ProximityGrid>();
+    auto playerGrid = std::make_unique<ProximityGrid>();
     sf::Clock deltaClock;
     sf::Vector2f center = logicalRes / 2.f; 
     
@@ -316,6 +317,12 @@ int main() {
                 enemyGrid->insert(entity, trans.position);
             });
 
+            playerGrid->clear();
+            auto playerUnitView = registry.view<component::PlayerUnitTag, component::Transform>();
+            playerUnitView.each([&](auto entity, auto& trans) {
+                playerGrid->insert(entity, trans.position);
+            });
+
             waveSystem.update(registry, deltaTime, center, configMgr);
             AnimationSystem::update(registry, deltaTime);
             float targetZoom = waveSystem.getCurrentWaveZoom();
@@ -324,8 +331,8 @@ int main() {
 
             StatueSkillSystem::update(registry, deltaTime, *enemyGrid);
             StatuePassiveSystem::update(registry, deltaTime, configMgr);
-            AISystem::update(registry, deltaTime, *enemyGrid); 
-            UnitCombatSystem::update(registry, deltaTime, *enemyGrid);
+            AISystem::update(registry, deltaTime, *enemyGrid, *playerGrid); 
+            UnitCombatSystem::update(registry, deltaTime, *enemyGrid, *playerGrid);
             VFXSystem::update(registry, deltaTime); // [NEW] Catch DamagedEvents before clearing
             DamageProcessingSystem::update(registry);
             EntityPhysicsSystem::update(registry);
@@ -333,7 +340,7 @@ int main() {
         }
 
         fpsDisplay.update(deltaTime);
-        cardSystem.updateInput(currentUIState, input, window, gameView, registry, dropZoneCenter);
+        cardSystem.updateInput(currentUIState, input, window, gameView, uiView, registry, dropZoneCenter);
         cardSystem.update(deltaTime, input);
 
         if (cardSystem.consumePendingUse()) {
@@ -350,11 +357,15 @@ int main() {
         window.clear(sf::Color::Black);
         window.setView(gameView);
         RenderSystem::render(registry, window, textureMap, tileMap);
-        VFXSystem::render(registry, window, font); // [NEW] Render floating text
         
+        // [FIXED] Draw World UI (HP Bars) first, then GodRay/Skills, then VFX (Damage Numbers) on top of EVERYTHING
         cardSystem.render(registry, window, gameView, uiView, font, totalTime);
         
-        // [L10N] Render Toggle Button
+        // Final World-Space Pass: Damage Numbers
+        window.setView(gameView); 
+        VFXSystem::render(registry, window, font); 
+        
+        // 5. Screen-Space UI (Final Layer)
         window.setView(uiView);
         window.draw(langBtn);
         sf::Text btnText(font);

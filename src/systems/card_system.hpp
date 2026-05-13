@@ -10,6 +10,7 @@
 #include "card_ui_layout_system.hpp"
 #include "statue_passive_system.hpp"
 #include "input_manager.hpp"
+#include "ui_manager.hpp"
 
 namespace ui {
 
@@ -49,7 +50,7 @@ public:
         updateLayout();
     }
 
-    void updateInput(const ui::UIState currentUIState, const input::InputState& input, const sf::RenderWindow& window, const sf::View& gameView, const entt::registry& registry, sf::Vector2f& dropZoneOut) {
+    void updateInput(const ui::UIState currentUIState, const input::InputState& input, const sf::RenderWindow& window, const sf::View& gameView, const sf::View& uiView, const entt::registry& registry, sf::Vector2f& dropZoneOut) {
         if (currentUIState != ui::UIState::HUD) return;
 
         if (input.isLeftPressed) {
@@ -92,16 +93,11 @@ public:
             }
 
             if (!droppedInPassive) {
-                sf::Vector2f dropZoneCenter = m_logicalRes / 2.f;
-                auto statueView = registry.view<component::StatueTag, component::Transform>();
-                if (statueView.begin() != statueView.end()) {
-                    auto worldPos = registry.get<component::Transform>(statueView.front()).position;
-                    // Use a const-safe way to map coords if possible, or keep as is if window is non-const in main
-                    dropZoneCenter = const_cast<sf::RenderWindow&>(window).mapPixelToCoords(const_cast<sf::RenderWindow&>(window).mapCoordsToPixel(worldPos, gameView), window.getView());
-                }
-                dropZoneOut = dropZoneCenter;
-                sf::Vector2f distVec = input.mouseUIPos - dropZoneCenter;
-                if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
+                // [REFINED] Use centralized drop zone calculation
+                sf::FloatRect statueDropBox = getStatueDropBoxUI(window, gameView, uiView, registry);
+                dropZoneOut = statueDropBox.position + statueDropBox.size / 2.f;
+
+                if (statueDropBox.contains(input.mouseUIPos)) {
                     m_pendingUse = true;
                     m_lastUsedCardKey = m_draggedCard->nameKey;
                 } else {
@@ -162,12 +158,11 @@ public:
     void render(entt::registry& registry, sf::RenderWindow& window, const sf::View& gameView, const sf::View& uiView, const sf::Font& font, float totalTime) {
         window.setView(uiView);
         std::vector<UISystem::CardInfo> cardInfos;
-        sf::Vector2f dropZoneCenter = m_logicalRes / 2.f;
-        auto statueView = registry.view<component::StatueTag, component::Transform>();
-        if (statueView.begin() != statueView.end()) {
-            auto worldPos = registry.get<component::Transform>(statueView.front()).position;
-            dropZoneCenter = window.mapPixelToCoords(window.mapCoordsToPixel(worldPos, gameView), uiView);      
-        }
+        
+        // [CONSISTENT] Use the same drop box for visuals and logic
+        sf::FloatRect statueDropBox = getStatueDropBoxUI(window, gameView, uiView, registry);
+        sf::Vector2f dropZoneCenter = statueDropBox.position + statueDropBox.size / 2.f;
+        
         auto& l10n = LocalizationManager::getInstance();
         for (int i = 0; i < (int)m_cards.size(); ++i) {
             const auto& c = m_cards[i];
@@ -175,14 +170,19 @@ public:
             if (c.isDragging) {
                 sf::Vector2i mPos = sf::Mouse::getPosition(window);
                 sf::Vector2f uiMPos = window.mapPixelToCoords(mPos, uiView);
-                sf::Vector2f distVec = uiMPos - dropZoneCenter;
-                if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
+                
+                // Check against Statue Box
+                if (statueDropBox.contains(uiMPos)) {
                     isInsideTarget = true;
                 }
-                for (const auto& slot : m_passiveSlots) {
-                    if (!slot.isOccupied && sf::FloatRect(slot.position, slot.size).contains(uiMPos)) {
-                        isInsideTarget = true;
-                        break;
+                
+                // Check against Passive Slots
+                if (!isInsideTarget) {
+                    for (const auto& slot : m_passiveSlots) {
+                        if (!slot.isOccupied && sf::FloatRect(slot.position, slot.size).contains(uiMPos)) {
+                            isInsideTarget = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -275,6 +275,30 @@ public:
     }
 
 private:
+    sf::FloatRect getStatueDropBoxUI(const sf::RenderWindow& window, const sf::View& gameView, const sf::View& uiView, const entt::registry& registry) const {
+        auto statueView = registry.view<component::StatueTag, component::Transform, component::BoxCollider>();
+        if (statueView.begin() == statueView.end()) return sf::FloatRect();
+
+        auto statueEntity = statueView.front();
+        const auto& trans = registry.get<component::Transform>(statueEntity);
+        const auto& box = registry.get<component::BoxCollider>(statueEntity);
+
+        sf::Vector2f topLeftWorld = trans.position + box.offset - box.size / 2.f;
+        sf::Vector2f bottomRightWorld = trans.position + box.offset + box.size / 2.f;
+
+        sf::Vector2i pixelTopLeft = window.mapCoordsToPixel(topLeftWorld, gameView);
+        sf::Vector2i pixelBottomRight = window.mapCoordsToPixel(bottomRightWorld, gameView);
+
+        sf::Vector2f uiTopLeft = window.mapPixelToCoords(pixelTopLeft, uiView);
+        sf::Vector2f uiBottomRight = window.mapPixelToCoords(pixelBottomRight, uiView);
+
+        sf::FloatRect dropBox(uiTopLeft, uiBottomRight - uiTopLeft);
+        // Interaction buffer: expand the box for better feel
+        dropBox.position -= sf::Vector2f(30.f, 30.f); 
+        dropBox.size += sf::Vector2f(60.f, 60.f);
+        return dropBox;
+    }
+
     sf::Vector2f m_logicalRes;
     const config::ConfigManager& m_configMgr; // Keep member
     std::vector<Card> m_cards;

@@ -10,5 +10,6 @@
         "y": 27.0
     },
     "hpRegen": 2.0,
-    "armor": 10.0
+    "armor": 1.0,
+    "vfxHeight": 60.0
 }

@@ -13,12 +13,26 @@ public:
         damageView.each([&](auto entity, auto& event, auto& trans) {
             if (event.damage > 0.f) {
                 auto textEntity = registry.create();
-                registry.emplace<component::Transform>(textEntity, trans.position);
+                
+                // [DYNAMIC-OFFSET] Handle both UnitStats and StatueStats
+                float heightOffset = 20.f; // Fallback
+                sf::Color textColor = sf::Color::White;
+
+                if (auto* stats = registry.try_get<component::UnitStats>(entity)) {
+                    heightOffset = stats->vfxHeight * 0.8f;
+                    textColor = registry.any_of<component::EnemyTag>(entity) ? sf::Color::White : sf::Color::Red;
+                } else if (auto* statueStats = registry.try_get<component::StatueStats>(entity)) {
+                    heightOffset = statueStats->vfxHeight * 0.8f;
+                    textColor = sf::Color::Red; // Statue taking damage is always alarming
+                }
+                
+                sf::Vector2f spawnPos = trans.position - sf::Vector2f(0.f, heightOffset);
+                registry.emplace<component::Transform>(textEntity, spawnPos);
                 
                 auto& ft = registry.emplace<component::FloatingText>(textEntity);
                 ft.text = std::to_string(static_cast<int>(event.damage));
-                ft.color = registry.any_of<component::EnemyTag>(entity) ? sf::Color::White : sf::Color::Red;
-                ft.duration = 0.8f;
+                ft.color = textColor;
+                ft.duration = 0.5f; // [QUICKER] Shorter duration (0.8s -> 0.5s)
                 ft.velocity = { (float)(rand() % 40 - 20), -60.f }; // Slight random spread
             }
         });
@@ -44,10 +58,16 @@ public:
 
     static void render(entt::registry& registry, sf::RenderWindow& window, const sf::Font& font) {
         auto view = registry.view<component::FloatingText, component::Transform>();
+        
+        // [VISUAL] Re-enable smoothing for clean, high-quality text as pixel-style was too blurry/broken
+        const_cast<sf::Texture&>(font.getTexture(16)).setSmooth(true);
+
         view.each([&](auto entity, auto& ft, auto& trans) {
             sf::Text text(font);
             text.setString(ft.text);
-            text.setCharacterSize(20);
+            text.setCharacterSize(16); // Smaller, cleaner size
+            
+            // Reverted: No outline for a minimalist pixel feel
             
             // Fade out
             float alpha = 1.f - (ft.timer / ft.duration);

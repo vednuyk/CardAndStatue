@@ -3,12 +3,13 @@
 #include <SFML/System/Vector2.hpp>
 #include <cmath>
 #include <algorithm>
+#include <numbers>
 #include "../components/unit_components.hpp"
 #include "proximity_grid.hpp"
 
 class AISystem {
 public:
-    static void update(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
+    static void update(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid, ProximityGrid& playerGrid) {
         auto view = registry.view<component::Transform, component::UnitStats, component::Velocity, component::AIBehavior>();
         auto* globalTarget = registry.ctx().find<component::GlobalTargetLocation>();
 
@@ -19,25 +20,30 @@ public:
                 return;
             }
 
-            switch (ai.type) {
-                case component::AIBehavior::Type::SeekStatue:
-                    if (globalTarget) {
-                        handleSeekStatue(entity, trans, stats, vel, registry, *globalTarget);
-                    }
-                    break;
-                case component::AIBehavior::Type::DefendStatue:
-                    handleDefendStatue(entity, trans, stats, vel, registry, enemyGrid);
-                    break;
-                case component::AIBehavior::Type::Berserker:
-                    handleBerserker(entity, trans, stats, vel, registry, enemyGrid);
-                    break;
-                case component::AIBehavior::Type::Passive:
-                    handlePassive(entity, trans, stats, vel, registry, enemyGrid);
-                    break;
-                default:
+            // --- LAYER 1: TARGETING ---
+            findTarget(entity, trans, stats, ai, registry, enemyGrid, playerGrid, globalTarget);
+
+            // --- LAYER 2: MOVEMENT & DISTANCE CHECK ---
+            if (ai.targetEntity != entt::null || ai.targeting == component::AIBehavior::Targeting::ToStatue) {
+                sf::Vector2f targetPos = getTargetPosition(ai, registry, globalTarget);
+                
+                // [PHYSICAL-ACCURACY] Distance check accounts for own radius
+                float distSq = calculateDistanceSq(trans.position, targetPos, ai, registry, globalTarget);
+                float combinedReach = stats.attackRange + trans.radius;
+
+                if (distSq <= combinedReach * combinedReach) {
+                    // In Range: Stop and Attack
                     vel.value = {0.f, 0.f};
-                    break;
+                } else {
+                    // Out of Range: Move using Pattern
+                    applyMovementPattern(entity, trans, stats, vel, ai, targetPos, deltaTime);
+                }
+            } else {
+                vel.value = {0.f, 0.f};
             }
+
+            // --- LAYER 3: ATTACK PATTERN (Currently handled by UnitCombatSystem) ---
+            // We can add logic here if specific patterns need prep work
 
             // [VISUAL] Flip sprite based on movement
             if (auto* sprite = registry.try_get<component::SpriteData>(entity)) {
@@ -49,98 +55,105 @@ public:
     }
 
 private:
-    static void handleSeekStatue(entt::entity entity, component::Transform& trans, component::UnitStats& stats, component::Velocity& vel, entt::registry& registry, const component::GlobalTargetLocation& globalTarget) {
-        sf::Vector2f moveDiff = globalTarget.position - trans.position;
+    static void findTarget(entt::entity entity, const component::Transform& trans, const component::UnitStats& stats, component::AIBehavior& ai, entt::registry& registry, ProximityGrid& enemyGrid, ProximityGrid& playerGrid, const component::GlobalTargetLocation* globalTarget) {
+        bool isEnemy = registry.any_of<component::EnemyTag>(entity);
         
-        // Clamping logic for box boundary
-        float closestX = std::max(globalTarget.bounds.position.x, std::min(trans.position.x, globalTarget.bounds.position.x + globalTarget.bounds.size.x));
-        float closestY = std::max(globalTarget.bounds.position.y, std::min(trans.position.y, globalTarget.bounds.position.y + globalTarget.bounds.size.y));
-        sf::Vector2f diffToBox = sf::Vector2f(closestX, closestY) - trans.position;
-        float distSq = diffToBox.x * diffToBox.x + diffToBox.y * diffToBox.y;
+        if (ai.targeting == component::AIBehavior::Targeting::ToStatue) {
+            // Primarily target Statue, but check for nearby PlayerUnits to "interact" with
+            entt::entity nearestKnight = entt::null;
+            float minDistSq = stats.attackRange * stats.attackRange * 1.5f; // Detection range slightly larger than attack range
 
-        if (distSq <= 100.f) { 
+            playerGrid.queryNearby(trans.position, [&](entt::entity knight) {
+                if (!registry.valid(knight)) return;
+                auto& kt = registry.get<component::Transform>(knight);
+                float dSq = distSq(kt.position, trans.position);
+                if (dSq < minDistSq) {
+                    minDistSq = dSq;
+                    nearestKnight = knight;
+                }
+            });
+
+            ai.targetEntity = nearestKnight; // If no knight, targetEntity is null, will move to Statue by default
+        } 
+        else if (ai.targeting == component::AIBehavior::Targeting::ToNearestEnemy) {
+            // Target the closest enemy unit
+            entt::entity nearestEnemy = entt::null;
+            float minDistSq = 2000.f * 2000.f; // Search wide
+
+            enemyGrid.queryNearby(trans.position, [&](entt::entity enemy) {
+                if (!registry.valid(enemy)) return;
+                auto& et = registry.get<component::Transform>(enemy);
+                float dSq = distSq(et.position, trans.position);
+                if (dSq < minDistSq) {
+                    minDistSq = dSq;
+                    nearestEnemy = enemy;
+                }
+            });
+            ai.targetEntity = nearestEnemy;
+        }
+    }
+
+    static sf::Vector2f getTargetPosition(const component::AIBehavior& ai, entt::registry& registry, const component::GlobalTargetLocation* globalTarget) {
+        if (registry.valid(ai.targetEntity)) {
+            return registry.get<component::Transform>(ai.targetEntity).position;
+        }
+        if (ai.targeting == component::AIBehavior::Targeting::ToStatue && globalTarget) {
+            return globalTarget->position;
+        }
+        return {0.f, 0.f};
+    }
+
+    static float calculateDistanceSq(sf::Vector2f pos, sf::Vector2f targetPos, const component::AIBehavior& ai, entt::registry& registry, const component::GlobalTargetLocation* globalTarget) {
+        // If targeting Statue, check against its BoxCollider bounds for better precision
+        if (!registry.valid(ai.targetEntity) && ai.targeting == component::AIBehavior::Targeting::ToStatue && globalTarget) {
+            float closestX = std::max(globalTarget->bounds.position.x, std::min(pos.x, globalTarget->bounds.position.x + globalTarget->bounds.size.x));
+            float closestY = std::max(globalTarget->bounds.position.y, std::min(pos.y, globalTarget->bounds.position.y + globalTarget->bounds.size.y));
+            sf::Vector2f diff = sf::Vector2f(closestX, closestY) - pos;
+            return diff.x * diff.x + diff.y * diff.y;
+        }
+        // Otherwise standard point-to-point
+        sf::Vector2f diff = targetPos - pos;
+        return diff.x * diff.x + diff.y * diff.y;
+    }
+
+    static void applyMovementPattern(entt::entity entity, const component::Transform& trans, const component::UnitStats& stats, component::Velocity& vel, component::AIBehavior& ai, sf::Vector2f targetPos, float dt) {
+        sf::Vector2f dir = targetPos - trans.position;
+        float dist = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+        if (dist < 0.001f) {
             vel.value = {0.f, 0.f};
-        } else {
-            float moveDist = std::sqrt(moveDiff.x * moveDiff.x + moveDiff.y * moveDiff.y);
-            if (moveDist > 0.001f) {
-                vel.value = (moveDiff / moveDist) * stats.speed;
+            return;
+        }
+        dir /= dist;
+
+        ai.movementTimer += dt;
+
+        switch (ai.movement) {
+            case component::AIBehavior::Movement::Linear:
+                vel.value = dir * stats.speed;
+                break;
+
+            case component::AIBehavior::Movement::SineWave: {
+                sf::Vector2f perp(-dir.y, dir.x);
+                float wave = std::sin(ai.movementTimer * 5.f) * 30.f;
+                vel.value = (dir * stats.speed) + (perp * wave);
+                break;
+            }
+
+            case component::AIBehavior::Movement::Dash: {
+                // Cycle: 1s slow approach, 0.5s dash
+                float cycle = std::fmod(ai.movementTimer, 1.5f);
+                if (cycle < 1.0f) {
+                    vel.value = dir * (stats.speed * 0.5f);
+                } else {
+                    vel.value = dir * (stats.speed * 3.0f);
+                }
+                break;
             }
         }
     }
 
-    static void handleDefendStatue(entt::entity entity, component::Transform& trans, component::UnitStats& stats, component::Velocity& vel, entt::registry& registry, ProximityGrid& enemyGrid) {
-        // [STRATEGY] DefendStatue: If enemies near statue, target them. Otherwise stay near statue.
-        auto* globalTarget = registry.ctx().find<component::GlobalTargetLocation>();
-        if (!globalTarget) return;
-
-        entt::entity nearestEnemy = entt::null;
-        float minDistSq = stats.attackRange * stats.attackRange * 9.f; // Look a bit further than range
-
-        // Query enemies near the Statue
-        enemyGrid.queryNearby(globalTarget->position, [&](entt::entity enemy) {
-            if (!registry.valid(enemy)) return;
-            auto& et = registry.get<component::Transform>(enemy);
-            sf::Vector2f diff = et.position - trans.position;
-            float dSq = diff.x * diff.x + diff.y * diff.y;
-            if (dSq < minDistSq) {
-                minDistSq = dSq;
-                nearestEnemy = enemy;
-            }
-        });
-
-        if (registry.valid(nearestEnemy)) {
-            moveToTarget(trans, stats, vel, registry, nearestEnemy);
-        } else {
-            // No enemies near statue, move to a "defensive position" (e.g., slightly in front of statue)
-            sf::Vector2f targetPos = globalTarget->position;
-            sf::Vector2f diff = targetPos - trans.position;
-            float distSq = diff.x * diff.x + diff.y * diff.y;
-            if (distSq > 150.f * 150.f) {
-                float dist = std::sqrt(distSq);
-                vel.value = (diff / dist) * stats.speed;
-            } else {
-                vel.value = {0.f, 0.f};
-            }
-        }
-    }
-
-    static void handleBerserker(entt::entity entity, component::Transform& trans, component::UnitStats& stats, component::Velocity& vel, entt::registry& registry, ProximityGrid& grid) {
-        entt::entity nearestTarget = entt::null;
-        float minDistSq = 1000.f * 1000.f; // Large search radius
-
-        grid.queryNearby(trans.position, [&](entt::entity potential) {
-            if (!registry.valid(potential)) return;
-            auto& pt = registry.get<component::Transform>(potential);
-            sf::Vector2f diff = pt.position - trans.position;
-            float dSq = diff.x * diff.x + diff.y * diff.y;
-            if (dSq < minDistSq) {
-                minDistSq = dSq;
-                nearestTarget = potential;
-            }
-        });
-
-        if (registry.valid(nearestTarget)) {
-            moveToTarget(trans, stats, vel, registry, nearestTarget);
-        } else {
-            vel.value = {0.f, 0.f};
-        }
-    }
-
-    static void handlePassive(entt::entity entity, component::Transform& trans, component::UnitStats& stats, component::Velocity& vel, entt::registry& registry, ProximityGrid& grid) {
-        // Just stands still
-        vel.value = {0.f, 0.f};
-    }
-
-    static void moveToTarget(component::Transform& trans, component::UnitStats& stats, component::Velocity& vel, entt::registry& registry, entt::entity target) {
-        auto& tt = registry.get<component::Transform>(target);
-        sf::Vector2f diff = tt.position - trans.position;
-        float distSq = diff.x * diff.x + diff.y * diff.y;
-
-        if (distSq <= stats.attackRange * stats.attackRange) {
-            vel.value = {0.f, 0.f};
-        } else {
-            float dist = std::sqrt(distSq);
-            vel.value = (diff / dist) * stats.speed;
-        }
+    static float distSq(sf::Vector2f a, sf::Vector2f b) {
+        sf::Vector2f d = a - b;
+        return d.x * d.x + d.y * d.y;
     }
 };

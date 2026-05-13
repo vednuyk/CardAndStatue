@@ -18,6 +18,7 @@ struct StatueConfig {
     sf::Vector2f boxOffset = { 0.0f, 60.0f };
     float hpRegen = 1.0f;
     float armor = 5.0f;
+    float vfxHeight = 120.0f;
 };
 
 struct SkillConfig {
@@ -68,9 +69,12 @@ struct EnemyConfig {
     float attackRange = 50.0f;
     float scale = 0.1f;
     float radius = 3.0f;
+    float vfxHeight = 32.0f;
     bool isPushable = true; 
     bool isStunnable = true;
-    std::string aiType = "SeekStatue"; // [NEW] Default behavior
+    std::string targeting = "ToStatue";       // [NEW]
+    std::string movementPattern = "Linear";   // [NEW]
+    std::string attackPattern = "Melee";      // [NEW]
     sf::Vector2f pivotOffset = { 0.f, 0.f }; 
     std::string texturePath;
 
@@ -152,6 +156,7 @@ private:
 
             statue.hpRegen = j.value("hpRegen", statue.hpRegen);
             statue.armor = j.value("armor", statue.armor);
+            statue.vfxHeight = j.value("vfxHeight", statue.vfxHeight);
             return true;
         } catch (...) { return false; }
     }
@@ -223,9 +228,12 @@ private:
                     cfg.attackRange = j.value("attackRange", cfg.attackRange);
                     cfg.scale = j.value("scale", cfg.scale);
                     cfg.radius = j.value("radius", cfg.radius);
+                    cfg.vfxHeight = j.value("vfxHeight", cfg.vfxHeight);
                     cfg.isPushable = j.value("isPushable", true);
                     cfg.isStunnable = j.value("isStunnable", true);
-                    cfg.aiType = j.value("aiType", "SeekStatue"); // [NEW] Parse AI type
+                    cfg.targeting = j.value("targeting", "ToStatue");
+                    cfg.movementPattern = j.value("movementPattern", "Linear");
+                    cfg.attackPattern = j.value("attackPattern", "Melee");
                     cfg.texturePath = j.value("texturePath", "");
 
                     if (j.contains("pivotOffset")) {

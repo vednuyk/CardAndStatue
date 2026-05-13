@@ -1,12 +1,18 @@
 {
   "name": "GoblinJunior",
   "speed": 65.0,
-  "damage": 8.0,
+  "damage": 5.0,
   "maxHealth": 45.0,
   "scale": 1.5,
   "radius": 17.0,
+  "attackRange": 5.0,
+  "attackSpeed": 0.5,
+  "vfxHeight": 35.0,
   "isPushable": true,
   "isStunnable": true,
+  "targeting": "ToStatue",
+  "movementPattern": "Linear",
+  "attackPattern": "Melee",
   "texturePath": "assets/IMG/Enemy/GoblinJunior/GoblinJuniorSpriteSheet.png",
   "animation": {
     "frameCount": 4,
@@ -17,7 +23,7 @@
   },
   "pivotOffset": {
     "x": 0.0,
-    "y": 19.0
+    "y": 19.0 
   },
   "offset": {
     "x": 0.0,

@@ -6,11 +6,11 @@
 #include <random>
 #include "../../components/unit_components.hpp"
 #include "../proximity_grid.hpp"
+#include "../unit_combat_system.hpp"
 
 class GodRaySystem {
 public:
     static void update(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
-        // 1. Manage God Ray Skill Instances
         auto godRayView = registry.view<component::GodRaySkill>();
         static std::vector<entt::entity> expiredGodRays;
         expiredGodRays.clear();
@@ -30,8 +30,6 @@ public:
         });
 
         if (!expiredGodRays.empty()) registry.destroy(expiredGodRays.begin(), expiredGodRays.end());
-
-        // 2. Update Visual Effects
         updateGodRayEffects(registry, deltaTime);
     }
 
@@ -60,11 +58,10 @@ private:
         sf::Vector2f pivotPos = et.position;
         if (auto* pivot = registry.try_get<component::Pivot>(target)) pivotPos += pivot->offset;
 
-        auto& de = registry.get_or_emplace<component::DamagedEvent>(target);
-        de.addDamage(damage, 0.1f);
-        de.addStun(stunDuration);
+        if (UnitCombatSystem::applyDamage(registry, target, damage, 0.1f)) {
+            registry.get<component::DamagedEvent>(target).addStun(stunDuration);
+        }
 
-        // Beam Effect
         auto effect = registry.create();
         registry.emplace<component::GodRayEffect>(effect, 0.5f, 0.f, target, pivotPos);
         registry.emplace<component::Transform>(effect, pivotPos - sf::Vector2f(0.f, 128.f)); 
@@ -73,7 +70,6 @@ private:
         sd.scale = {0.2f, 0.5f}; 
         sd.renderLayer = 2;
 
-        // Impact Aura
         auto aura = registry.create();
         registry.emplace<component::GodRayEffect>(aura, 0.5f, 0.f, target, pivotPos);
         registry.emplace<component::Transform>(aura, pivotPos);

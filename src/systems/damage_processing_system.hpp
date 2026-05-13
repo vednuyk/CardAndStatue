@@ -29,10 +29,12 @@ public:
             }
             // 2. Apply to the Statue (Base)
             else if (auto* statueStats = registry.try_get<component::StatueStats>(entity)) {
-                // Statue only receives damage, ignore physics/flash
+                // Statue receives damage and hit flash
                 if (event.damage > 0.f) {
+                    // [MINIMAL-DAMAGE] Ensure at least 1 damage is dealt even if armor is high
                     float finalDamage = std::max(1.f, event.damage - statueStats->armor);
                     statueStats->currentHealth -= finalDamage;
+                    statueStats->hitFlashTimer = 0.1f; // Force flash
                 }
             }
         });

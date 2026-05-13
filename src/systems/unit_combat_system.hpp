@@ -8,84 +8,132 @@
 
 class UnitCombatSystem {
 public:
-    static void update(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
+    static void update(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid, ProximityGrid& playerGrid) {
         destroyDeadEntities(registry);
 
         auto unitView = registry.view<component::UnitStats>();
         unitView.each([&](auto entity, auto& stats) {
-            if (stats.hitFlashTimer > 0.f) {
-                stats.hitFlashTimer -= deltaTime;
-            }
+            if (stats.hitFlashTimer > 0.f) stats.hitFlashTimer -= deltaTime;
+            if (stats.attackTimer > 0.f) stats.attackTimer -= deltaTime;
+            if (stats.invincibilityTimer > 0.f) stats.invincibilityTimer -= deltaTime;
         });
 
-        updateEnemyCombat(registry, deltaTime, enemyGrid);
-        updatePlayerUnitCombat(registry, deltaTime, enemyGrid);
+        auto statueView = registry.view<component::StatueStats>();
+        statueView.each([&](auto entity, auto& stats) {
+            stats.currentHealth = std::min(stats.maxHealth, stats.currentHealth + stats.hpRegen * deltaTime);
+            if (stats.hitFlashTimer > 0.f) stats.hitFlashTimer -= deltaTime;
+            if (stats.invincibilityTimer > 0.f) stats.invincibilityTimer -= deltaTime;
+        });
+
+        auto combatView = registry.view<component::Transform, component::UnitStats, component::AIBehavior>();
+        combatView.each([&](auto entity, auto& trans, auto& stats, auto& ai) {
+            if (stats.attackTimer <= 0.f) {
+                if (executeAttack(entity, trans, stats, ai, registry, enemyGrid, playerGrid)) {
+                    stats.attackTimer = 1.0f / std::max(0.1f, stats.attackSpeed);
+                }
+            }
+        });
+    }
+
+    static bool applyDamage(entt::registry& registry, entt::entity target, float damage, float flash) {
+        if (!registry.valid(target)) return false;
+
+        // [I-FRAME CHECK] Prevent overlapping damage within 0.01s
+        if (auto* stats = registry.try_get<component::UnitStats>(target)) {
+            if (stats->invincibilityTimer > 0.f) return false;
+            stats->invincibilityTimer = 0.01f;
+        } else if (auto* statueStats = registry.try_get<component::StatueStats>(target)) {
+            if (statueStats->invincibilityTimer > 0.f) return false;
+            statueStats->invincibilityTimer = 0.01f;
+        }
+
+        auto& de = registry.get_or_emplace<component::DamagedEvent>(target);
+        de.addDamage(damage, flash);
+        return true;
     }
 
 private:
-    static void destroyDeadEntities(entt::registry& registry) {
-        static std::vector<entt::entity> toDestroy;
-        toDestroy.clear();
-
-        auto unitView = registry.view<component::UnitStats>();
-        unitView.each([&](auto entity, auto& stats) {
-            if (stats.currentHealth <= 0.f) {
-                toDestroy.push_back(entity);
+    static bool executeAttack(entt::entity attacker, const component::Transform& trans, const component::UnitStats& stats, const component::AIBehavior& ai, entt::registry& registry, ProximityGrid& enemyGrid, ProximityGrid& playerGrid) {
+        bool isEnemy = registry.any_of<component::EnemyTag>(attacker);
+        entt::entity target = ai.targetEntity;
+        
+        if (isEnemy && !registry.valid(target) && ai.targeting == component::AIBehavior::Targeting::ToStatue) {
+            auto statueView = registry.view<component::StatueTag, component::Transform, component::BoxCollider>();
+            if (statueView.begin() != statueView.end()) {
+                target = statueView.front();
             }
-        });
+        }
 
-        if (!toDestroy.empty()) {
-            registry.destroy(toDestroy.begin(), toDestroy.end());
+        if (!registry.valid(target)) return false;
+
+        if (registry.any_of<component::StatueTag>(target)) {
+            return attackStatue(attacker, trans, stats, target, registry);
+        } else {
+            return attackUnit(attacker, trans, stats, target, registry, enemyGrid, playerGrid, ai);
         }
     }
 
-    static void updateEnemyCombat(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
-        auto statueView = registry.view<component::StatueTag, component::Transform, component::StatueStats, component::BoxCollider>();
-        if (statueView.begin() == statueView.end()) return;
+    static bool attackUnit(entt::entity attacker, const component::Transform& trans, const component::UnitStats& stats, entt::entity target, entt::registry& registry, ProximityGrid& enemyGrid, ProximityGrid& playerGrid, const component::AIBehavior& ai) {
+        auto& tt = registry.get<component::Transform>(target);
+        float dSq = distSq(trans.position, tt.position);
+        float combinedReach = stats.attackRange + trans.radius + tt.radius;
 
-        auto statueEntity = statueView.front();
-        auto& statueStats = registry.get<component::StatueStats>(statueEntity);
-        auto& statueBox = registry.get<component::BoxCollider>(statueEntity);
-        auto& statuePos = registry.get<component::Transform>(statueEntity).position;
+        if (dSq <= combinedReach * combinedReach) {
+            if (ai.attack == component::AIBehavior::Attack::AoE) {
+                bool isEnemy = registry.any_of<component::EnemyTag>(attacker);
+                ProximityGrid& targetGrid = isEnemy ? playerGrid : enemyGrid;
+                targetGrid.queryNearby(trans.position, [&](entt::entity t) {
+                    if (!registry.valid(t)) return;
+                    auto& otherT = registry.get<component::Transform>(t);
+                    if (distSq(trans.position, otherT.position) <= combinedReach * combinedReach) {
+                        applyDamage(registry, t, stats.damage, 0.1f);
+                    }
+                });
+                return true;
+            } else {
+                applyDamage(registry, target, stats.damage, 0.1f);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static bool attackStatue(entt::entity attacker, const component::Transform& trans, const component::UnitStats& stats, entt::entity statue, entt::registry& registry) {
+        const auto& statueBox = registry.get<component::BoxCollider>(statue);
+        const auto& statuePos = registry.get<component::Transform>(statue).position;
 
         float boxMinX = statuePos.x + statueBox.offset.x - statueBox.size.x / 2.f;
         float boxMaxX = statuePos.x + statueBox.offset.x + statueBox.size.x / 2.f;
         float boxMinY = statuePos.y + statueBox.offset.y - statueBox.size.y / 2.f;
         float boxMaxY = statuePos.y + statueBox.offset.y + statueBox.size.y / 2.f;
 
-        // [OPTIMIZED] Use grid to query enemies near the statue box instead of O(N) loop
-        float queryRange = std::max(statueBox.size.x, statueBox.size.y) / 2.f + 20.f;
-        enemyGrid.queryRange(statuePos + statueBox.offset, queryRange, [&](entt::entity enemy) {
-            if (!registry.valid(enemy)) return;
-            auto& et = registry.get<component::Transform>(enemy);
-            auto& stats = registry.get<component::UnitStats>(enemy);
-
-            float closestX = std::max(boxMinX, std::min(et.position.x, boxMaxX));
-            float closestY = std::max(boxMinY, std::min(et.position.y, boxMaxY));
-            sf::Vector2f diffToBox = sf::Vector2f(closestX, closestY) - et.position;
-            float distSq = diffToBox.x * diffToBox.x + diffToBox.y * diffToBox.y;
-
-            if (distSq <= 100.f) { // Within 10px of box
-                auto& de = registry.get_or_emplace<component::DamagedEvent>(statueEntity);
-                de.addDamage(stats.damage * deltaTime, 0.f);
-            }
-        });
+        float closestX = std::max(boxMinX, std::min(trans.position.x, boxMaxX));
+        float closestY = std::max(boxMinY, std::min(trans.position.y, boxMaxY));
+        sf::Vector2f diff = sf::Vector2f(closestX, closestY) - trans.position;
+        
+        // [RELAXED-CHECK] Added +5.f buffer to ensure attacks land when AI stops
+        float combinedReach = stats.attackRange + trans.radius + 5.f; 
+        if (diff.x * diff.x + diff.y * diff.y <= combinedReach * combinedReach) {
+            applyDamage(registry, statue, stats.damage, 0.1f);
+            return true; // Attack was physically possible, reset timer
+        }
+        return false;
     }
 
-    static void updatePlayerUnitCombat(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
-        auto playerUnitView = registry.view<component::PlayerUnitTag, component::Transform, component::UnitStats>();
-        playerUnitView.each([&](auto entity, auto& trans, auto& stats) {
-            enemyGrid.queryNearby(trans.position, [&](entt::entity enemy) {
-                if (!registry.valid(enemy)) return;
-                auto& et = registry.get<component::Transform>(enemy);
-                sf::Vector2f diff = et.position - trans.position;
-                float dSq = diff.x * diff.x + diff.y * diff.y;
+    static void destroyDeadEntities(entt::registry& registry) {
+        static std::vector<entt::entity> toDestroy;
+        toDestroy.clear();
 
-                if (dSq <= stats.attackRange * stats.attackRange) {
-                    auto& de = registry.get_or_emplace<component::DamagedEvent>(enemy);
-                    de.addDamage(stats.damage * deltaTime * stats.attackSpeed, 0.1f);
-                }
-            });
+        auto unitView = registry.view<component::UnitStats>();
+        unitView.each([&](auto entity, auto& stats) {
+            if (stats.currentHealth <= 0.f) toDestroy.push_back(entity);
         });
+
+        if (!toDestroy.empty()) registry.destroy(toDestroy.begin(), toDestroy.end());
+    }
+
+    static float distSq(sf::Vector2f a, sf::Vector2f b) {
+        sf::Vector2f d = a - b;
+        return d.x * d.x + d.y * d.y;
     }
 };

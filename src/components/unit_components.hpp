@@ -32,6 +32,8 @@ struct UnitStats {
     float attackRange{100.f};
     float attackTimer{0.f};
     float hitFlashTimer{0.f};
+    float invincibilityTimer{0.f}; // [NEW] 미세 무적 시간 (중첩 데미지 방지용)
+    float vfxHeight{32.f}; // [NEW] 머리 위 VFX (데미지 숫자 등) 출력 높이
     
     // [PHYSICS CONFIG] Resistance settings
     bool isPushable{true};
@@ -71,6 +73,9 @@ struct StatueStats {
     float currentHealth{1000.f};
     float hpRegen{1.0f};    // 초당 회복량
     float armor{5.0f};      // 데미지 감소
+    float hitFlashTimer{0.f}; // [NEW] 피격 시 시각적 효과용 타이머
+    float invincibilityTimer{0.f}; // [NEW] 미세 무적 시간
+    float vfxHeight{120.f};   // [NEW] 성상 머리 위 VFX 출력 높이
 };
 
 // 탈부착식 스킬 컴포넌트들
@@ -205,15 +210,29 @@ struct Knockback {
 };
 
 struct AIBehavior {
-    enum class Type {
-        None,
-        SeekStatue,    // Default for enemies: move towards Statue
-        DefendStatue,  // Move towards enemies near Statue
-        Passive,       // Don't move, just attack if in range
-        Berserker      // Seek nearest enemy anywhere
+    enum class Targeting {
+        ToStatue,      // Move toward the Statue (Primary for enemies)
+        ToNearestEnemy // Move toward the closest enemy (Primary for allies)
     };
-    Type type{Type::None};
-    entt::entity target{entt::null};
+    
+    enum class Movement {
+        Linear,        // Direct movement toward target
+        SineWave,      // Wavering movement
+        Dash           // Slow approach, then quick dash
+    };
+
+    enum class Attack {
+        Melee,         // Standard close-range attack
+        Projectile,    // Shoots a projectile (requires ProjectileSystem)
+        AoE            // Area of effect around self
+    };
+
+    Targeting targeting{Targeting::ToStatue};
+    Movement movement{Movement::Linear};
+    Attack attack{Attack::Melee};
+
+    entt::entity targetEntity{entt::null};
+    float movementTimer{0.f}; // Used for patterns like SineWave or Dash
 };
 
 struct FloatingText {

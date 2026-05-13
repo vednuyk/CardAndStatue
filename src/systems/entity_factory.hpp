@@ -12,7 +12,18 @@ public:
         auto entity = registry.create();
         // [LEGACY] Radius is no longer used for Statue collision, using BoxCollider instead
         registry.emplace<component::Transform>(entity, position, 0.f, 0.f);
-        registry.emplace<component::StatueStats>(entity, cfg.maxHealth, cfg.maxHealth, cfg.hpRegen, cfg.armor);
+        
+        // [FIXED] Use designated initializers to prevent aggregate init errors
+        registry.emplace<component::StatueStats>(entity, component::StatueStats{
+            .maxHealth = cfg.maxHealth,
+            .currentHealth = cfg.maxHealth,
+            .hpRegen = cfg.hpRegen,
+            .armor = cfg.armor,
+            .hitFlashTimer = 0.f,
+            .invincibilityTimer = 0.f,
+            .vfxHeight = cfg.vfxHeight
+        });
+
         registry.emplace<component::StatueTag>(entity);
         registry.emplace<component::BoxCollider>(entity, cfg.boxSize, cfg.boxOffset);
         
@@ -49,6 +60,7 @@ public:
         stats.damage = cfg.damage;
         stats.attackSpeed = cfg.attackSpeed;
         stats.attackRange = cfg.attackRange;
+        stats.vfxHeight = cfg.vfxHeight;
         stats.isPushable = cfg.isPushable;
         stats.isStunnable = cfg.isStunnable;
 
@@ -68,13 +80,19 @@ public:
         sprite.textureName = cfg.name;
         sprite.scale = {cfg.scale, cfg.scale};
 
-        // [DATA-DRIVEN] Map string AI type to enum
-        component::AIBehavior::Type aiType = component::AIBehavior::Type::SeekStatue;
-        if (cfg.aiType == "DefendStatue") aiType = component::AIBehavior::Type::DefendStatue;
-        else if (cfg.aiType == "Berserker") aiType = component::AIBehavior::Type::Berserker;
-        else if (cfg.aiType == "Passive") aiType = component::AIBehavior::Type::Passive;
+        // [LAYERED-AI] Map config strings to structured AIBehavior
+        auto& ai = registry.emplace<component::AIBehavior>(entity);
+        
+        if (cfg.targeting == "ToNearestEnemy") ai.targeting = component::AIBehavior::Targeting::ToNearestEnemy;
+        else ai.targeting = component::AIBehavior::Targeting::ToStatue;
 
-        registry.emplace<component::AIBehavior>(entity, aiType);
+        if (cfg.movementPattern == "SineWave") ai.movement = component::AIBehavior::Movement::SineWave;
+        else if (cfg.movementPattern == "Dash") ai.movement = component::AIBehavior::Movement::Dash;
+        else ai.movement = component::AIBehavior::Movement::Linear;
+
+        if (cfg.attackPattern == "Projectile") ai.attack = component::AIBehavior::Attack::Projectile;
+        else if (cfg.attackPattern == "AoE") ai.attack = component::AIBehavior::Attack::AoE;
+        else ai.attack = component::AIBehavior::Attack::Melee;
 
         // Initialize Animation if enabled in config
         if (cfg.animation.enabled) {
@@ -116,7 +134,10 @@ public:
         sprite.textureName = "Knight"; 
         sprite.scale = {0.15f, 0.15f};
 
-        registry.emplace<component::AIBehavior>(entity, component::AIBehavior::Type::Berserker);
+        auto& ai = registry.emplace<component::AIBehavior>(entity);
+        ai.targeting = component::AIBehavior::Targeting::ToNearestEnemy;
+        ai.movement = component::AIBehavior::Movement::Linear;
+        ai.attack = component::AIBehavior::Attack::Melee;
 
         return entity;
     }

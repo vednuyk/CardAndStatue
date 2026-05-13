@@ -171,17 +171,15 @@ private:
     }
 
     static void renderWorldUI(entt::registry& registry, sf::RenderTarget& target) {
+        // [FIXED] Only render health bar for the Statue
+        // Show bar if health is not full OR if hit recently (using hitFlashTimer as a proxy or health state)
         auto statueView = registry.view<component::Transform, component::StatueStats>();
         statueView.each([&](auto entity, auto& trans, auto& stats) {
-            if (stats.currentHealth < stats.maxHealth) {
-                drawHealthBar(target, trans.position, stats.currentHealth, stats.maxHealth, {120.f, 8.f}, -80.f);
-            }
-        });
-
-        auto unitView = registry.view<component::Transform, component::UnitStats>();
-        unitView.each([&](auto entity, auto& trans, auto& stats) {
-            if (stats.currentHealth < stats.maxHealth) {
-                drawHealthBar(target, trans.position, stats.currentHealth, stats.maxHealth, {40.f, 5.f}, -35.f);
+            // [VISIBILITY-LOGIC] Show if damaged OR if hit flash is active (indicating recent combat)
+            if (stats.currentHealth < stats.maxHealth || stats.hitFlashTimer > 0.f) {
+                // [DYNAMIC-POS] Use vfxHeight from config + small padding
+                float offsetY = -(stats.vfxHeight + 10.f); 
+                drawHealthBar(target, trans.position, stats.currentHealth, stats.maxHealth, {120.f, 8.f}, offsetY);
             }
         });
     }

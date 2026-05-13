@@ -69,6 +69,10 @@ private:
                 if (stats->hitFlashTimer > 0.f) {
                     vertColor = sf::Color(255, 255, 255, 254); 
                 }
+            } else if (auto* statueStats = registry.try_get<component::StatueStats>(entity)) {
+                if (statueStats->hitFlashTimer > 0.f) {
+                    vertColor = sf::Color(255, 255, 255, 254); 
+                }
             }
 
             sf::FloatRect texRect = spriteData.textureRect;

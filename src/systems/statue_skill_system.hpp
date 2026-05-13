@@ -72,8 +72,6 @@ private:
     static void updateStatueCore(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
         auto statueView = registry.view<component::StatueTag, component::Transform, component::StatueStats>();
         statueView.each([&](auto statueEntity, auto& transform, auto& stats) {
-            stats.currentHealth = std::min(stats.maxHealth, stats.currentHealth + stats.hpRegen * deltaTime);
-
             if (auto* holy = registry.try_get<component::HolyAttackSkill>(statueEntity)) {
                 updateHolyAttack(registry, *holy, transform, deltaTime, enemyGrid);
             }
@@ -90,9 +88,9 @@ private:
             bool hitAny = false;
             enemyGrid.queryRange(trans.position, skill.radius, [&](entt::entity enemy) {
                 if (!registry.valid(enemy)) return;
-                auto& de = registry.get_or_emplace<component::DamagedEvent>(enemy);
-                de.addDamage(skill.damage, 0.1f);
-                hitAny = true;
+                if (UnitCombatSystem::applyDamage(registry, enemy, skill.damage, 0.1f)) {
+                    hitAny = true;
+                }
             });
             if (hitAny) skill.timer = 0.f;
         }

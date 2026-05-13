@@ -44,13 +44,16 @@ struct SkillConfig {
         float knockbackForce = 150.0f;
         float rotationSpeed = 2.0f;
         float radius = 120.0f;
-        float duration = 10.0f;
+        float duration = 10.0f;      // Skill active time
+        float passiveCooldown = 5.0f; // Recharge time in card slot
     } rosary;
 
     struct GodRay {
-        float cooldown = 2.0f;
+        float attackInterval = 0.5f; // Time between beams while active
         float damage = 150.0f;
         float range = 600.0f;
+        float duration = 10.0f;      // How long the skill lasts
+        float passiveCooldown = 5.0f; // Recharge time in card slot
         float knockbackForce = 80.0f;
         float knockbackDuration = 0.2f;
     } godRay;
@@ -65,7 +68,10 @@ struct EnemyConfig {
     float attackRange = 50.0f;
     float scale = 0.1f;
     float radius = 3.0f;
-    sf::Vector2f pivotOffset = { 0.f, 0.f }; // [NEW] Data-driven pivot for visuals
+    bool isPushable = true; 
+    bool isStunnable = true;
+    std::string aiType = "SeekStatue"; // [NEW] Default behavior
+    sf::Vector2f pivotOffset = { 0.f, 0.f }; 
     std::string texturePath;
 
     struct AnimationData {
@@ -183,13 +189,17 @@ private:
                 skills.rosary.rotationSpeed = r.value("rotationSpeed", skills.rosary.rotationSpeed);
                 skills.rosary.radius = r.value("radius", skills.rosary.radius);
                 skills.rosary.duration = r.value("duration", skills.rosary.duration);
+                skills.rosary.passiveCooldown = r.value("passiveCooldown", skills.rosary.passiveCooldown);
             }
 
             if (j.contains("godRay")) {
                 auto& g = j["godRay"];
-                skills.godRay.cooldown = g.value("cooldown", skills.godRay.cooldown);
+                // Map "cooldown" from JSON to attackInterval to maintain compatibility but fix logic
+                skills.godRay.attackInterval = g.value("cooldown", skills.godRay.attackInterval); 
                 skills.godRay.damage = g.value("damage", skills.godRay.damage);
                 skills.godRay.range = g.value("range", skills.godRay.range);
+                skills.godRay.duration = g.value("duration", skills.godRay.duration);
+                skills.godRay.passiveCooldown = g.value("passiveCooldown", skills.godRay.passiveCooldown);
                 skills.godRay.knockbackForce = g.value("knockbackForce", skills.godRay.knockbackForce);
                 skills.godRay.knockbackDuration = g.value("knockbackDuration", skills.godRay.knockbackDuration);
             }
@@ -213,6 +223,9 @@ private:
                     cfg.attackRange = j.value("attackRange", cfg.attackRange);
                     cfg.scale = j.value("scale", cfg.scale);
                     cfg.radius = j.value("radius", cfg.radius);
+                    cfg.isPushable = j.value("isPushable", true);
+                    cfg.isStunnable = j.value("isStunnable", true);
+                    cfg.aiType = j.value("aiType", "SeekStatue"); // [NEW] Parse AI type
                     cfg.texturePath = j.value("texturePath", "");
 
                     if (j.contains("pivotOffset")) {

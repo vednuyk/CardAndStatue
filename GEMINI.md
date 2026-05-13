@@ -20,6 +20,16 @@
   - **Autonomous Execution:** Once a component is attached, the `StatueSkillSystem` must automatically detect and process its logic without additional triggers.
   - Apply skills by attaching components to the `Statue` entity or creating instance entities (like `RosarySkill`).
   - Use `EntityFactory` for centralized creation.
+- **Unified Physics Architecture:** 
+  - All physics effects (Knockback, Stun, etc.) must be handled by `EnemyPhysicsSystem` via `PhysicsRequest` components.
+  - Skills should only request effects; the physics system decides how to apply them based on the target's resistances (`UnitStats`).
+---
+
+## 🤖 Agent Operating Logic (Base Knowledge)
+All agents must operate based on the following context hierarchy:
+1. **Context 0 (Fundamental):** `GEMINI.md` - Core tech stack, SOLID principles, and optimization rules.
+2. **Context 1 (Safety):** `ERRORMANAGEMENT.md` - Historical errors and prevention checklists.
+3. **Context 2 (Specialized):** Agent-specific `.md` - Specialized instructions for the task at hand.
 
 ---
 
@@ -27,6 +37,7 @@
 - **Spatial Partitioning:** Always use `ProximityGrid` for nearby entity queries (AI, Combat, Skills). Never use O(N²) nested loops for distance checks.
 - **Cache Friendliness:** Utilize EnTT `view` and `group` for efficient iteration. Avoid `registry.get` inside tight loops if `registry.view<...>().each(...)` can be used.
 - **Math Optimization:** Use squared distance (`distSq`) instead of `sqrt` for range checks unless the actual distance value is required.
+- **Collision Standards:** Never use point-based collision for units. All interactions must use actual mathematical Collider calculations (Circle-to-Circle, Box-to-Box) based on `.json` radius/size.
 - **DeltaTime:** Always use `deltaTime` for frame-independent movement and timers. Note: `deltaTime` is capped at 0.05s in `main.cpp` to prevent "spiral of death".
 - **Asset Management:** Centralized via `ConfigManager` and texture maps in `main.cpp`. Avoid redundant disk I/O.
 

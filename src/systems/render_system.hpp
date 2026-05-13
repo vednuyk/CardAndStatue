@@ -48,8 +48,11 @@ private:
             float depth;
             const sf::Texture* texture;
             sf::FloatRect texRect;
+            sf::Vector2f position;
+            float rotation;
             sf::Vector2f halfSize;
             sf::Color color;
+            bool flipX;
         };
         static std::vector<RenderNode> renderNodes;
         renderNodes.clear();
@@ -64,23 +67,25 @@ private:
             sf::Color vertColor = sf::Color::White;
             if (auto* stats = registry.try_get<component::UnitStats>(entity)) {
                 if (stats->hitFlashTimer > 0.f) {
-                    // Alpha 254를 "흰색 플래시" 신호로 사용 (정상 상태는 255)
                     vertColor = sf::Color(255, 255, 255, 254); 
                 }
             }
 
             sf::FloatRect texRect = spriteData.textureRect;
-            if (texRect.size.x == 0) texRect = sf::FloatRect({0.f, 0.f}, sf::Vector2f(tex->getSize()));
+            if (texRect.size.x == 0) {
+                if (auto* anim = registry.try_get<component::Animation>(entity)) {
+                    texRect = sf::FloatRect({0.f, 0.f}, {static_cast<float>(anim->frameWidth), static_cast<float>(anim->frameHeight)});
+                } else {
+                    texRect = sf::FloatRect({0.f, 0.f}, sf::Vector2f(tex->getSize()));
+                }
+            }
 
             float hw = (texRect.size.x * spriteData.scale.x) / 2.f;
             float hh = (texRect.size.y * spriteData.scale.y) / 2.f;
 
-            float depth = transform.position.y + hh;
-            if (registry.any_of<component::OrbitalSphere, component::GodRayEffect>(entity)) {
-                depth += 100000.f; // Force skills/effects to top
-            }
+            float depth = transform.position.y + hh + (static_cast<float>(spriteData.renderLayer) * 10000.f);
 
-            renderNodes.push_back({entity, depth, tex, texRect, {hw, hh}, vertColor});
+            renderNodes.push_back({entity, depth, tex, texRect, transform.position, transform.rotation, {hw, hh}, vertColor, spriteData.flipX});
         });
 
         // 1. 전역 정렬 (Depth)
@@ -97,7 +102,7 @@ private:
             if (currentTexture != nullptr && !vertexBuffer.empty()) {
                 sf::RenderStates states;
                 states.texture = currentTexture;
-                if (shaderLoaded) states.shader = &hitShader; // 셰이더 적용
+                if (shaderLoaded) states.shader = &hitShader; 
 
                 target.draw(vertexBuffer.data(), vertexBuffer.size(), sf::PrimitiveType::Triangles, states);
                 vertexBuffer.clear();
@@ -105,9 +110,6 @@ private:
         };
 
         for (const auto& node : renderNodes) {
-            auto& transform = registry.get<component::Transform>(node.entity);
-            auto& spriteData = registry.get<component::SpriteData>(node.entity);
-
             if (node.texture != currentTexture) {
                 flush();
                 currentTexture = node.texture;
@@ -115,10 +117,10 @@ private:
 
             float hw = node.halfSize.x;
             float hh = node.halfSize.y;
-            if (spriteData.flipX) hw = -hw; 
+            if (node.flipX) hw = -hw; 
 
             sf::Transform combinedTransform;
-            combinedTransform.translate(transform.position).rotate(sf::degrees(transform.rotation));
+            combinedTransform.translate(node.position).rotate(sf::degrees(node.rotation));
 
             sf::Vector2f p1 = combinedTransform.transformPoint({-hw, -hh});
             sf::Vector2f p2 = combinedTransform.transformPoint({hw, -hh});

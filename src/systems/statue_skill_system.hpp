@@ -7,222 +7,98 @@
 #include "../components/unit_components.hpp"
 #include "entity_factory.hpp"
 #include "proximity_grid.hpp"
+#include "skills/rosary_system.hpp"
+#include "skills/god_ray_system.hpp"
 
 class StatueSkillSystem {
 public:
     static void update(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
-        // 1. Statue general stats update
+        // 1. Core Statue Logic & Simple Skills
+        updateStatueCore(registry, deltaTime, enemyGrid);
+
+        // 2. Delegate to Specialized Systems
+        RosarySystem::update(registry, deltaTime, enemyGrid);
+        GodRaySystem::update(registry, deltaTime, enemyGrid);
+    }
+
+    static void createSkillInstance(entt::registry& registry, entt::entity statue, const std::string& skillKey, const config::ConfigManager& configMgr) {
+        if (skillKey == "CARD_ROSARY") {
+            auto& cfg = configMgr.skills.rosary;
+            component::RosarySkill rosary;
+            rosary.damage = cfg.damage;
+            rosary.knockbackForce = cfg.knockbackForce;
+            rosary.rotationSpeed = cfg.rotationSpeed;
+            rosary.radius = cfg.radius;
+            rosary.duration = cfg.duration;
+            rosary.passiveCooldown = cfg.passiveCooldown;
+            rosary.owner = statue;
+            registry.emplace<component::RosarySkill>(registry.create(), rosary);
+        } 
+        else if (skillKey == "CARD_GOD_RAY") {
+            auto& gcfg = configMgr.skills.godRay;
+            auto& godRay = registry.emplace<component::GodRaySkill>(registry.create());
+            godRay.owner = statue;
+            godRay.cooldown = gcfg.attackInterval;
+            godRay.damage = gcfg.damage;
+            godRay.range = gcfg.range;
+            godRay.stunDuration = 0.5f; 
+            godRay.duration = gcfg.duration;
+            godRay.passiveCooldown = gcfg.passiveCooldown;
+            godRay.remainingTime = godRay.duration;
+            godRay.timer = godRay.cooldown; 
+        } 
+        else if (skillKey == "CARD_HOLY") {
+            if (!registry.any_of<component::HolyAttackSkill>(statue)) {
+                auto& hcfg = configMgr.skills.holy;
+                auto& holy = registry.emplace<component::HolyAttackSkill>(statue);
+                holy.cooldown = hcfg.cooldown;
+                holy.damage = hcfg.damage;
+                holy.radius = hcfg.radius;
+                holy.timer = hcfg.cooldown;
+            }
+        } 
+        else if (skillKey == "CARD_SPAWN_KNIGHT") {
+            if (!registry.any_of<component::SpawnKnightSkill>(statue)) {
+                auto& scfg = configMgr.skills.spawnKnight;
+                auto& spawn = registry.emplace<component::SpawnKnightSkill>(statue);
+                spawn.cooldown = scfg.cooldown;
+                spawn.spawnCount = scfg.spawnCount;
+                spawn.timer = scfg.cooldown;
+            }
+        }
+    }
+
+private:
+    static void updateStatueCore(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
         auto statueView = registry.view<component::StatueTag, component::Transform, component::StatueStats>();
         statueView.each([&](auto statueEntity, auto& transform, auto& stats) {
             stats.currentHealth = std::min(stats.maxHealth, stats.currentHealth + stats.hpRegen * deltaTime);
 
             if (auto* holy = registry.try_get<component::HolyAttackSkill>(statueEntity)) {
-                updateHolyAttack(registry, statueEntity, *holy, transform, deltaTime, enemyGrid);
+                updateHolyAttack(registry, *holy, transform, deltaTime, enemyGrid);
             }
 
             if (auto* spawn = registry.try_get<component::SpawnKnightSkill>(statueEntity)) {
-                updateSpawnKnight(registry, statueEntity, *spawn, transform, deltaTime);
-            }
-        });
-
-        // 2. God Ray Instances Update (Enables Stacking and Duration)
-        auto godRayView = registry.view<component::GodRaySkill>();
-        static std::vector<entt::entity> expiredGodRays;
-        expiredGodRays.clear();
-
-        godRayView.each([&](auto entity, auto& skill) {
-            if (registry.valid(skill.owner)) {
-                skill.remainingTime -= deltaTime;
-                if (skill.remainingTime <= 0.f) {
-                    expiredGodRays.push_back(entity);
-                } else {
-                    auto& statueTrans = registry.get<component::Transform>(skill.owner);
-                    updateGodRay(registry, entity, skill, statueTrans, deltaTime, enemyGrid);
-                }
-            } else {
-                expiredGodRays.push_back(entity);
-            }
-        });
-
-        if (!expiredGodRays.empty()) {
-            registry.destroy(expiredGodRays.begin(), expiredGodRays.end());
-        }
-
-        // 3. God Ray Effects Lifecycle
-        updateGodRayEffects(registry, deltaTime);
-
-        // 4. Rosary Skill Instances Lifecycle (Independent timers)
-        auto rosaryView = registry.view<component::RosarySkill>();
-        static std::vector<entt::entity> expiredInstances;
-        expiredInstances.clear();
-
-        rosaryView.each([&](auto instanceEntity, auto& rosary) {
-            if (!registry.valid(rosary.owner)) {
-                expiredInstances.push_back(instanceEntity);
-                return;
-            }
-
-            auto& statueTrans = registry.get<component::Transform>(rosary.owner);
-            if (!rosary.initialized) {
-                for (int i = 0; i < 16; ++i) {
-                    auto sphere = registry.create();
-                    registry.emplace<component::Transform>(sphere, statueTrans.position);
-                    
-                    float targetOffset = (2.f * 3.14159f / 16.f) * i;
-                    auto& orbital = registry.emplace<component::OrbitalSphere>(sphere);
-                    orbital.parentInstance = instanceEntity;
-                    orbital.ownerStatue = rosary.owner; 
-                    orbital.state = component::OrbitalSphere::State::Expanding;
-                    orbital.targetSpreadOffset = targetOffset;
-                    orbital.radius = rosary.radius;
-                    orbital.rotationSpeed = rosary.rotationSpeed;
-                    orbital.knockbackForce = rosary.knockbackForce;
-                    orbital.damage = rosary.damage;
-                    
-                    auto& sd = registry.emplace<component::SpriteData>(sphere);
-                    sd.textureID = component::TextureID::RosarySphere;
-                    sd.scale = {0.1f, 0.1f};
-                }
-                rosary.initialized = true;
-                rosary.remainingTime = rosary.duration;
-            } else {
-                rosary.remainingTime -= deltaTime;
-                if (rosary.remainingTime <= 0.f) {
-                    expiredInstances.push_back(instanceEntity);
-                }
-            }
-        });
-
-        for (auto instance : expiredInstances) {
-            auto sphereView = registry.view<component::OrbitalSphere>();
-            for (auto entity : sphereView) {
-                auto& orbital = sphereView.get<component::OrbitalSphere>(entity);
-                if (orbital.parentInstance == instance) {
-                    orbital.state = component::OrbitalSphere::State::Shrinking;
-                    orbital.parentInstance = entt::null;
-                }
-            }
-            registry.destroy(instance);
-        }
-
-        updateOrbitalSpheres(registry, deltaTime, enemyGrid);
-    }
-
-    static void applyRosary(entt::registry& registry, entt::entity statue, const component::RosarySkill& config) {
-        auto instance = registry.create();
-        auto& rosary = registry.emplace<component::RosarySkill>(instance, config);
-        rosary.owner = statue;
-    }
-
-private:
-    static void updateOrbitalSpheres(entt::registry& registry, float deltaTime, ProximityGrid& enemyGrid) {
-        auto view = registry.view<component::OrbitalSphere, component::Transform>();
-        static std::vector<entt::entity> toDestroy;
-        toDestroy.clear();
-
-        view.each([&](auto entity, auto& orbital, auto& trans) {
-            if (!registry.valid(orbital.ownerStatue)) {
-                toDestroy.push_back(entity);
-                return;
-            }
-
-            if (orbital.parentInstance != entt::null && !registry.valid(orbital.parentInstance)) {
-                orbital.state = component::OrbitalSphere::State::Shrinking;
-                orbital.parentInstance = entt::null;
-            }
-
-            switch (orbital.state) {
-                case component::OrbitalSphere::State::Expanding:
-                    orbital.expansionProgress = std::min(1.0f, orbital.expansionProgress + orbital.expansionSpeed * deltaTime);
-                    if (orbital.expansionProgress >= 1.0f) orbital.state = component::OrbitalSphere::State::Active;
-                    break;
-                case component::OrbitalSphere::State::Shrinking:
-                    orbital.expansionProgress -= orbital.shrinkSpeed * deltaTime;
-                    if (orbital.expansionProgress <= 0.0f) {
-                        toDestroy.push_back(entity);
-                        return;
-                    }
-                    break;
-                case component::OrbitalSphere::State::Active:
-                    break;
-            }
-
-            float easeT = (orbital.state == component::OrbitalSphere::State::Shrinking) 
-                        ? (orbital.expansionProgress * orbital.expansionProgress) 
-                        : (orbital.expansionProgress * orbital.expansionProgress * orbital.expansionProgress);
-            
-            float currentRadius = easeT * orbital.radius;
-            orbital.orbitAngle += orbital.rotationSpeed * deltaTime;
-            float finalAngle = orbital.orbitAngle + orbital.targetSpreadOffset;
-
-            auto& parentTrans = registry.get<component::Transform>(orbital.ownerStatue);
-            trans.position.x = parentTrans.position.x + std::cos(finalAngle) * currentRadius;
-            trans.position.y = parentTrans.position.y + std::sin(finalAngle) * currentRadius;
-
-            if (auto* sd = registry.try_get<component::SpriteData>(entity)) {
-                float targetScale = 0.1f + (orbital.expansionProgress * 0.4f);
-                sd->scale = {targetScale, targetScale};
-            }
-
-            if (currentRadius > 5.0f) {
-                handleSphereCollision(registry, entity, orbital, trans, parentTrans, currentRadius, deltaTime, enemyGrid);
-            }
-        });
-
-        if (!toDestroy.empty()) registry.destroy(toDestroy.begin(), toDestroy.end());
-    }
-
-    static void handleSphereCollision(entt::registry& registry, entt::entity sphere, const component::OrbitalSphere& orbital, component::Transform& trans, const component::Transform& parentTrans, float currentRadius, float dt, ProximityGrid& enemyGrid) {
-        float collisionRadius = std::max(15.0f, currentRadius * 0.15f + 10.0f);
-        
-        enemyGrid.queryNearby(trans.position, [&](entt::entity enemy) {
-            if (!registry.valid(enemy)) return;
-            auto& et = registry.get<component::Transform>(enemy);
-            sf::Vector2f diff = et.position - trans.position;
-            float distSq = diff.x * diff.x + diff.y * diff.y;
-
-            if (distSq < collisionRadius * collisionRadius) {
-                auto& es = registry.get<component::UnitStats>(enemy);
-                es.currentHealth -= orbital.damage * dt;
-                es.hitFlashTimer = 0.1f;
-
-                sf::Vector2f pushDir = et.position - parentTrans.position;
-                float pushDist = std::sqrt(pushDir.x * pushDir.x + pushDir.y * pushDir.y);
-                if (pushDist > 0.001f) {
-                    sf::Vector2f pushVelocity = (pushDir / pushDist) * orbital.knockbackForce;
-                    
-                    if (orbital.state == component::OrbitalSphere::State::Expanding && pushDist < currentRadius) {
-                        pushVelocity = (pushDir / pushDist) * (currentRadius - pushDist) * (1.0f / dt);
-                    }
-                    
-                    registry.emplace_or_replace<component::Knockback>(enemy, pushVelocity, 0.05f);
-                }
+                updateSpawnKnight(registry, *spawn, transform, deltaTime);
             }
         });
     }
 
-    static void updateHolyAttack(entt::registry& registry, entt::entity statue, component::HolyAttackSkill& skill, const component::Transform& trans, float dt, ProximityGrid& enemyGrid) {
+    static void updateHolyAttack(entt::registry& registry, component::HolyAttackSkill& skill, const component::Transform& trans, float dt, ProximityGrid& enemyGrid) {
         skill.timer += dt;
         if (skill.timer >= skill.cooldown) {
             bool hitAny = false;
-            float radiusSq = skill.radius * skill.radius;
-
-            enemyGrid.queryNearby(trans.position, [&](entt::entity enemy) {
+            enemyGrid.queryRange(trans.position, skill.radius, [&](entt::entity enemy) {
                 if (!registry.valid(enemy)) return;
-                auto& et = registry.get<component::Transform>(enemy);
-                sf::Vector2f diff = et.position - trans.position;
-                if (diff.x * diff.x + diff.y * diff.y <= radiusSq) {
-                    auto& es = registry.get<component::UnitStats>(enemy);
-                    es.currentHealth -= skill.damage;
-                    hitAny = true;
-                }
+                auto& de = registry.get_or_emplace<component::DamagedEvent>(enemy);
+                de.addDamage(skill.damage, 0.1f);
+                hitAny = true;
             });
-
             if (hitAny) skill.timer = 0.f;
         }
     }
 
-    static void updateSpawnKnight(entt::registry& registry, entt::entity statue, component::SpawnKnightSkill& skill, const component::Transform& trans, float dt) {
+    static void updateSpawnKnight(entt::registry& registry, component::SpawnKnightSkill& skill, const component::Transform& trans, float dt) {
         skill.timer += dt;
         if (skill.timer >= skill.cooldown) {
             for (int i = 0; i < skill.spawnCount; ++i) {
@@ -232,130 +108,5 @@ private:
             }
             skill.timer = 0.f;
         }
-    }
-
-    static void updateGodRay(entt::registry& registry, entt::entity instance, component::GodRaySkill& skill, const component::Transform& statueTrans, float dt, ProximityGrid& enemyGrid) {
-        skill.timer += dt;
-        if (skill.timer >= skill.cooldown) {
-            std::vector<entt::entity> potentialTargets;
-            
-            // [RANDOM TARGETING] Collect all enemies within range
-            enemyGrid.queryRange(statueTrans.position, skill.range, [&](entt::entity enemy) {
-                if (!registry.valid(enemy)) return;
-                potentialTargets.push_back(enemy);
-            });
-
-            if (!potentialTargets.empty()) {
-                // Pick one at random
-                static std::mt19937 rng(std::random_device{}());
-                std::uniform_int_distribution<size_t> dist(0, potentialTargets.size() - 1);
-                entt::entity target = potentialTargets[dist(rng)];
-
-                auto& es = registry.get<component::UnitStats>(target);
-                auto& et = registry.get<component::Transform>(target);
-                
-                // [NEW] Use Pivot offset for exact alignment at target's feet
-                sf::Vector2f pivotPos = et.position;
-                if (auto* pivot = registry.try_get<component::Pivot>(target)) {
-                    pivotPos += pivot->offset;
-                }
-
-                es.currentHealth -= skill.damage;
-                es.hitFlashTimer = 0.1f;
-
-                // [REPLACED] Knockback -> Stun/Stiffness
-                registry.emplace_or_replace<component::Stun>(target, skill.stunDuration);
-
-                // Create "Baptism" effect above the target
-                auto effect = registry.create();
-                auto& effectComp = registry.emplace<component::GodRayEffect>(effect, 0.5f, 0.f, target);
-                effectComp.lastTargetPos = pivotPos; // Anchor to pivot
-                
-                // Half-height for scale.y 0.5 is 128
-                // Position center so that bottom is exactly at pivotPos
-                registry.emplace<component::Transform>(effect, pivotPos - sf::Vector2f(0.f, 128.f)); 
-                
-                auto& sd = registry.emplace<component::SpriteData>(effect);
-                sd.textureID = component::TextureID::GodRay;
-                sd.scale = {0.2f, 0.5f}; 
-
-                // [NEW] Create Ground Impact Aura
-                auto aura = registry.create();
-                registry.emplace<component::GodRayEffect>(aura, 0.5f, 0.f, target);
-                registry.get<component::GodRayEffect>(aura).lastTargetPos = pivotPos;
-                registry.emplace<component::Transform>(aura, pivotPos);
-                
-                auto& asd = registry.emplace<component::SpriteData>(aura);
-                asd.textureID = component::TextureID::GodRayImpact;
-                asd.scale = {0.1f, 0.05f}; // Start very small and flat on ground
-                
-                skill.timer = 0.f;
-            }
-        }
-    }
-
-    static void updateGodRayEffects(entt::registry& registry, float dt) {
-        auto view = registry.view<component::GodRayEffect, component::Transform, component::SpriteData>();
-        static std::vector<entt::entity> toDestroy;
-        toDestroy.clear();
-
-        view.each([&](auto entity, auto& effect, auto& trans, auto& sprite) {
-            effect.timer += dt;
-            if (effect.timer >= effect.duration) {
-                toDestroy.push_back(entity);
-            } else {
-                sf::Vector2f refPos = effect.lastTargetPos;
-                if (registry.valid(effect.target)) {
-                    auto& et = registry.get<component::Transform>(effect.target);
-                    refPos = et.position;
-                    // [FIX] Always apply Pivot offset if available to track the specific enemy point
-                    if (auto* pivot = registry.try_get<component::Pivot>(effect.target)) {
-                        refPos += pivot->offset;
-                    }
-                    effect.lastTargetPos = refPos;
-                }
-                
-                float progress = effect.timer / effect.duration;
-                float targetScaleX = 1.2f;
-
-                // [NEW] Handle Beam vs Aura distinct animations
-                if (sprite.textureID == component::TextureID::GodRay) {
-                    float currentScaleY = 0.5f;
-                    if (progress < 0.2f) {
-                        float t = progress / 0.2f;
-                        sprite.scale.x = 0.2f + (targetScaleX - 0.2f) * t; 
-                    } else if (progress < 0.7f) {
-                        static std::mt19937 gen(1337);
-                        std::uniform_real_distribution<float> dis(0.95f, 1.05f);
-                        sprite.scale.x = targetScaleX * dis(gen); 
-                    } else {
-                        float t = (progress - 0.7f) / 0.3f;
-                        sprite.scale.x = targetScaleX * (1.0f - t);
-                        currentScaleY = 0.5f * (1.0f - t * 0.5f);
-                    }
-                    sprite.scale.y = currentScaleY;
-
-                    // Anchoring: Keep the bottom of the beam exactly at refPos (the Pivot)
-                    float hh = (512.f * sprite.scale.y) / 2.f;
-                    trans.position = refPos - sf::Vector2f(0.f, hh);
-                } else if (sprite.textureID == component::TextureID::GodRayImpact) {
-                    // Aura Animation: Smooth Ethereal Glow expansion
-                    if (progress < 0.25f) {
-                        // Gentle Fade-in & Expand
-                        float t = progress / 0.25f;
-                        sprite.scale.x = 0.4f + 1.0f * t; 
-                        sprite.scale.y = 0.2f + 0.5f * t;
-                    } else {
-                        // Long Fade-out
-                        float t = (progress - 0.25f) / 0.75f;
-                        sprite.scale.x = 1.4f * (1.0f + t * 0.2f); // Continue slow growth
-                        sprite.scale.y = 0.7f * (1.0f - t);        // Natural fade
-                    }
-                    trans.position = refPos; 
-                }
-            }
-        });
-
-        if (!toDestroy.empty()) registry.destroy(toDestroy.begin(), toDestroy.end());
     }
 };

@@ -5,6 +5,8 @@
   "maxHealth": 45.0,
   "scale": 1.5,
   "radius": 17.0,
+  "isPushable": true,
+  "isStunnable": true,
   "texturePath": "assets/IMG/Enemy/GoblinJunior/GoblinJuniorSpriteSheet.png",
   "animation": {
     "frameCount": 4,

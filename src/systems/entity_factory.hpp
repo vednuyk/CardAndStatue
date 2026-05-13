@@ -41,7 +41,17 @@ public:
         auto entity = registry.create();
         
         registry.emplace<component::Transform>(entity, position, cfg.radius);
-        registry.emplace<component::UnitStats>(entity, cfg.maxHealth, cfg.maxHealth, cfg.speed, cfg.damage, cfg.attackSpeed, cfg.attackRange);
+        
+        auto& stats = registry.emplace<component::UnitStats>(entity);
+        stats.maxHealth = cfg.maxHealth;
+        stats.currentHealth = cfg.maxHealth;
+        stats.speed = cfg.speed;
+        stats.damage = cfg.damage;
+        stats.attackSpeed = cfg.attackSpeed;
+        stats.attackRange = cfg.attackRange;
+        stats.isPushable = cfg.isPushable;
+        stats.isStunnable = cfg.isStunnable;
+
         registry.emplace<component::EnemyTag>(entity);
         registry.emplace<component::Velocity>(entity, sf::Vector2f(0.f, 0.f));
         registry.emplace<component::Pivot>(entity, cfg.pivotOffset);
@@ -57,6 +67,14 @@ public:
 
         sprite.textureName = cfg.name;
         sprite.scale = {cfg.scale, cfg.scale};
+
+        // [DATA-DRIVEN] Map string AI type to enum
+        component::AIBehavior::Type aiType = component::AIBehavior::Type::SeekStatue;
+        if (cfg.aiType == "DefendStatue") aiType = component::AIBehavior::Type::DefendStatue;
+        else if (cfg.aiType == "Berserker") aiType = component::AIBehavior::Type::Berserker;
+        else if (cfg.aiType == "Passive") aiType = component::AIBehavior::Type::Passive;
+
+        registry.emplace<component::AIBehavior>(entity, aiType);
 
         // Initialize Animation if enabled in config
         if (cfg.animation.enabled) {
@@ -79,14 +97,26 @@ public:
     static entt::entity createPlayerUnit(entt::registry& registry, sf::Vector2f position, const std::string& typeName) {
         auto entity = registry.create();
         registry.emplace<component::Transform>(entity, position, 10.f);
-        registry.emplace<component::UnitStats>(entity, 100.f, 100.f, 80.f, 15.f, 1.2f, 30.f);
+        
+        auto& stats = registry.emplace<component::UnitStats>(entity);
+        stats.maxHealth = 100.f;
+        stats.currentHealth = 100.f;
+        stats.speed = 80.f;
+        stats.damage = 15.f;
+        stats.attackSpeed = 1.2f;
+        stats.attackRange = 30.f;
+        stats.isPushable = true;
+        stats.isStunnable = true;
+
         registry.emplace<component::PlayerUnitTag>(entity);
         registry.emplace<component::Velocity>(entity, sf::Vector2f(0.f, 0.f));
         
         auto& sprite = registry.emplace<component::SpriteData>(entity);
-        sprite.textureID = component::TextureID::Knight;
+        sprite.textureID = component::TextureID::Knight; 
         sprite.textureName = "Knight"; 
         sprite.scale = {0.15f, 0.15f};
+
+        registry.emplace<component::AIBehavior>(entity, component::AIBehavior::Type::Berserker);
 
         return entity;
     }

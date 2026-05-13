@@ -7,6 +7,9 @@
 #include "ui_system.hpp"
 #include "config_manager.hpp"
 #include "localization_manager.hpp"
+#include "card_ui_layout_system.hpp"
+#include "statue_passive_system.hpp"
+#include "input_manager.hpp"
 
 namespace ui {
 
@@ -14,9 +17,9 @@ struct Card {
     std::string nameKey;
     sf::Vector2f position;
     sf::Vector2f size{100.f, 140.f};
-    float rotation = 0.f; 
+    float rotation = 0.f;
     bool isDragging = false;
-    float hoverProgress = 0.f; 
+    float hoverProgress = 0.f;
     bool isHovered = false;
 };
 
@@ -25,14 +28,15 @@ struct PassiveSlot {
     sf::Vector2f position;
     sf::Vector2f size{100.f, 140.f};
     bool isOccupied = false;
-    float duration = 10.0f; 
-    float cooldown = 5.0f;  
+    float duration = 10.0f;
+    float cooldown = 5.0f;
     float timer = 0.0f;
 };
 
 class CardSystem {
 public:
-    CardSystem(sf::Vector2f logicalRes) : m_logicalRes(logicalRes) {
+    CardSystem(sf::Vector2f logicalRes, const config::ConfigManager& configMgr) 
+        : m_logicalRes(logicalRes), m_configMgr(configMgr) {
         for (int i = 0; i < 5; ++i) {
             m_cards.push_back({"CARD_ROSARY", {0.f, 0.f}});
         }
@@ -45,113 +49,102 @@ public:
         updateLayout();
     }
 
-    void handleEvent(const sf::Event& event, const sf::RenderWindow& window, const sf::View& uiView, const sf::View& gameView, const entt::registry& registry, sf::Vector2f& dropZoneOut) {
-        if (const auto* mousePressed = event.getIf<sf::Event::MouseButtonPressed>()) {
-            if (mousePressed->button == sf::Mouse::Button::Left) {
-                sf::Vector2f uiMousePos = window.mapPixelToCoords(mousePressed->position, uiView);
-                for (auto& card : m_cards) {
-                    if (card.isHovered) {
-                        card.position = uiMousePos - card.size / 2.f; 
-                        card.hoverProgress = 0.f;
-                        card.isHovered = false;
-                        card.isDragging = true;
-                        m_draggedCard = &card;
-                        m_dragOffset = card.position - uiMousePos;
-                        break;
-                    }
+    void updateInput(const ui::UIState currentUIState, const input::InputState& input, const sf::RenderWindow& window, const sf::View& gameView, const entt::registry& registry, sf::Vector2f& dropZoneOut) {
+        if (currentUIState != ui::UIState::HUD) return;
+
+        if (input.isLeftPressed) {
+            for (auto& card : m_cards) {
+                if (card.isHovered) {
+                    card.position = input.mouseUIPos - card.size / 2.f;
+                    card.hoverProgress = 0.f;
+                    card.isHovered = false;
+                    card.isDragging = true;
+                    m_draggedCard = &card;
+                    m_dragOffset = card.position - input.mouseUIPos;
+                    break;
                 }
             }
         }
 
-        if (const auto* mouseReleased = event.getIf<sf::Event::MouseButtonReleased>()) {
-            if (mouseReleased->button == sf::Mouse::Button::Left && m_draggedCard) {
-                sf::Vector2f uiMousePos = window.mapPixelToCoords(mouseReleased->position, uiView);
-                bool droppedInPassive = false;
-                for (auto& slot : m_passiveSlots) {
-                    sf::FloatRect slotBounds(slot.position, slot.size);
-                    if (slotBounds.contains(uiMousePos) && !slot.isOccupied) {
-                        slot.cardNameKey = m_draggedCard->nameKey;
-                        slot.isOccupied = true;
-                        if (slot.cardNameKey == "CARD_ROSARY") {
-                            slot.duration = 10.0f;
-                            slot.cooldown = 5.0f;
-                        } else if (slot.cardNameKey == "CARD_GOD_RAY") {
-                            slot.duration = 10.0f;
-                            slot.cooldown = 5.0f;
-                        } else {
-                            slot.duration = 0.0f;
-                            slot.cooldown = 5.0f;
-                        }
-                        slot.timer = 0.f;
-                        m_triggeredPassiveSkills.push_back(slot.cardNameKey);
-                        m_pendingPassiveDrop = true;
-                        droppedInPassive = true;
-                        break;
+        if (input.isLeftReleased && m_draggedCard) {
+            bool droppedInPassive = false;
+            for (auto& slot : m_passiveSlots) {
+                sf::FloatRect slotBounds(slot.position, slot.size);
+                if (slotBounds.contains(input.mouseUIPos) && !slot.isOccupied) {
+                    slot.cardNameKey = m_draggedCard->nameKey;
+                    slot.isOccupied = true;
+                    
+                    StatuePassiveSystem::addPassive(slot.cardNameKey, m_configMgr);
+                    
+                    if (slot.cardNameKey == "CARD_ROSARY") {
+                        slot.duration = m_configMgr.skills.rosary.duration;
+                        slot.cooldown = m_configMgr.skills.rosary.passiveCooldown;
+                    } else if (slot.cardNameKey == "CARD_GOD_RAY") {
+                        slot.duration = m_configMgr.skills.godRay.duration;
+                        slot.cooldown = m_configMgr.skills.godRay.passiveCooldown;
                     }
+                    
+                    slot.timer = 0.f;
+                    m_pendingPassiveDrop = true;
+                    droppedInPassive = true;
+                    break;
                 }
-
-                if (!droppedInPassive) {
-                    sf::Vector2f dropZoneCenter = m_logicalRes / 2.f;
-                    auto statueView = registry.view<component::StatueTag, component::Transform>();
-                    if (statueView.begin() != statueView.end()) {
-                        auto statueEnt = statueView.front();
-                        auto worldPos = registry.get<component::Transform>(statueEnt).position;
-                        dropZoneCenter = const_cast<sf::RenderWindow&>(window).mapPixelToCoords(const_cast<sf::RenderWindow&>(window).mapCoordsToPixel(worldPos, gameView), uiView);
-                    }
-                    dropZoneOut = dropZoneCenter;
-                    sf::Vector2f distVec = uiMousePos - dropZoneCenter;
-                    if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
-                        m_pendingUse = true;
-                        m_lastUsedCardKey = m_draggedCard->nameKey;
-                    } else {
-                        m_draggedCard->isDragging = false;
-                        updateLayout();
-                    }
-                }
-                m_draggedCard = nullptr;
             }
+
+            if (!droppedInPassive) {
+                sf::Vector2f dropZoneCenter = m_logicalRes / 2.f;
+                auto statueView = registry.view<component::StatueTag, component::Transform>();
+                if (statueView.begin() != statueView.end()) {
+                    auto worldPos = registry.get<component::Transform>(statueView.front()).position;
+                    // Use a const-safe way to map coords if possible, or keep as is if window is non-const in main
+                    dropZoneCenter = const_cast<sf::RenderWindow&>(window).mapPixelToCoords(const_cast<sf::RenderWindow&>(window).mapCoordsToPixel(worldPos, gameView), window.getView());
+                }
+                dropZoneOut = dropZoneCenter;
+                sf::Vector2f distVec = input.mouseUIPos - dropZoneCenter;
+                if (distVec.x * distVec.x + distVec.y * distVec.y < 150.f * 150.f) {
+                    m_pendingUse = true;
+                    m_lastUsedCardKey = m_draggedCard->nameKey;
+                } else {
+                    m_draggedCard->isDragging = false;
+                    updateLayout();
+                }
+            }
+            m_draggedCard = nullptr;
         }
 
-        if (const auto* mouseMoved = event.getIf<sf::Event::MouseMoved>()) {
-            if (m_draggedCard) {
-                sf::Vector2f uiMousePos = window.mapPixelToCoords(mouseMoved->position, uiView);
-                m_draggedCard->position = uiMousePos + m_dragOffset;
-            }
+        if (m_draggedCard && input.isLeftDown) {
+            m_draggedCard->position = input.mouseUIPos + m_dragOffset;
         }
     }
 
-    void update(float deltaTime, const sf::RenderWindow& window, const sf::View& uiView) {
-        sf::Vector2i mousePos = sf::Mouse::getPosition(window);
-        sf::Vector2f uiMousePos = window.mapPixelToCoords(mousePos, uiView);
+    void update(float deltaTime, const input::InputState& input) {
         for (auto& slot : m_passiveSlots) {
             if (slot.isOccupied) {
                 slot.timer += deltaTime;
                 if (slot.timer >= (slot.duration + slot.cooldown)) {
                     slot.timer = 0.f;
-                    m_triggeredPassiveSkills.push_back(slot.cardNameKey);
                 }
             }
         }
-        
+
         Card* topHoveredCard = nullptr;
         if (!m_draggedCard) {
             float minScore = std::numeric_limits<float>::max();
             for (auto& c : m_cards) {
+                ui::LayoutInfo baseLayout = { c.position, c.rotation };
+                ui::LayoutInfo hoveredLayout = ui::CardUILayoutSystem::calculateHoverEffect(baseLayout, c.size, c.hoverProgress);
+                
                 float scale = 1.0f + (c.hoverProgress * 0.4f);
-                float lift = c.hoverProgress * 80.f;
                 sf::Vector2f animatedSize = c.size * scale;
-                sf::Vector2f animatedPos = {
-                    c.position.x + c.size.x / 2.f - animatedSize.x / 2.f,
-                    c.position.y - lift + c.size.y - animatedSize.y
-                };
-                sf::FloatRect animatedBox(animatedPos, animatedSize);
+                sf::FloatRect animatedBox(hoveredLayout.position, animatedSize);
                 sf::FloatRect baseBox(c.position, c.size);
-                if (animatedBox.contains(uiMousePos) || baseBox.contains(uiMousePos)) {
+                
+                if (animatedBox.contains(input.mouseUIPos) || baseBox.contains(input.mouseUIPos)) {
                     sf::Vector2f baseCenter = c.position + c.size / 2.f;
-                    sf::Vector2f diff = uiMousePos - baseCenter;
+                    sf::Vector2f diff = input.mouseUIPos - baseCenter;
                     float distSq = diff.x * diff.x + diff.y * diff.y;
                     float score = distSq;
-                    if (c.isHovered) score *= 0.5f; 
+                    if (c.isHovered) score *= 0.5f;
                     if (score < minScore) {
                         minScore = score;
                         topHoveredCard = &c;
@@ -173,7 +166,7 @@ public:
         auto statueView = registry.view<component::StatueTag, component::Transform>();
         if (statueView.begin() != statueView.end()) {
             auto worldPos = registry.get<component::Transform>(statueView.front()).position;
-            dropZoneCenter = window.mapPixelToCoords(window.mapCoordsToPixel(worldPos, gameView), uiView);
+            dropZoneCenter = window.mapPixelToCoords(window.mapCoordsToPixel(worldPos, gameView), uiView);      
         }
         auto& l10n = LocalizationManager::getInstance();
         for (int i = 0; i < (int)m_cards.size(); ++i) {
@@ -247,11 +240,11 @@ public:
     void updateLayout() {
         int n = static_cast<int>(m_cards.size());
         if (n > 0) {
-            float t = std::clamp((static_cast<float>(n) - 2.f) / 8.f, 0.f, 1.f); 
-            float arcRadius = 800.f; 
-            float angleStep = 5.8f - t * 1.0f; 
-            sf::Vector2f handAnchor(m_logicalRes.x / 2.f, m_logicalRes.y + 20.f); 
-            sf::Vector2f pivot(handAnchor.x, handAnchor.y + arcRadius); 
+            float t = std::clamp((static_cast<float>(n) - 2.f) / 8.f, 0.f, 1.f);
+            float arcRadius = 1200.f; // [TWEAKED] Slightly flatter arc
+            float angleStep = 4.0f - t * 0.5f; // [TWEAKED] More overlap than original 5.8f
+            sf::Vector2f handAnchor(m_logicalRes.x / 2.f, m_logicalRes.y + 5.f); // [TWEAKED] Raised up (Original +20f -> +5f)
+            sf::Vector2f pivot(handAnchor.x, handAnchor.y + arcRadius);
             float totalAngleRange = (n > 1 ? static_cast<float>(n - 1) * angleStep : 0.f);
             float startAngle = -totalAngleRange / 2.f;
             for (int i = 0; i < n; ++i) {
@@ -263,7 +256,7 @@ public:
                     m_cards[i].position = {x - m_cards[i].size.x / 2.f, y - m_cards[i].size.y};
                     m_cards[i].rotation = angleDeg;
                 } else {
-                    m_cards[i].rotation = 0.f; 
+                    m_cards[i].rotation = 0.f;
                 }
             }
         }
@@ -283,6 +276,7 @@ public:
 
 private:
     sf::Vector2f m_logicalRes;
+    const config::ConfigManager& m_configMgr; // Keep member
     std::vector<Card> m_cards;
     std::vector<PassiveSlot> m_passiveSlots;
     Card* m_draggedCard = nullptr;

@@ -9,58 +9,51 @@
 class UnitMovementSystem {
 public:
     static void update(entt::registry& registry, float deltaTime) noexcept {
-        auto view = registry.view<component::Transform, component::Velocity>();
+        // 1. Unified Lifecycle Update (Remove expired components first)
+        // This prevents processing entities that should already be "cured"
+        static std::vector<entt::entity> toRemove;
         
-        static std::vector<entt::entity> entities;
-        entities.clear();
-        entities.reserve(view.size_hint());
-        for(auto entity : view) entities.push_back(entity);
+        // Stun Lifecycle
+        toRemove.clear();
+        auto stunView = registry.view<component::Stun>();
+        stunView.each([&](auto entity, auto& s) {
+            s.duration -= deltaTime;
+            if (s.duration <= 0.f) toRemove.push_back(entity);
+        });
+        if (!toRemove.empty()) registry.remove<component::Stun>(toRemove.begin(), toRemove.end());
 
-        if (entities.empty()) return;
+        // Knockback Lifecycle
+        toRemove.clear();
+        auto kbView = registry.view<component::Knockback>();
+        kbView.each([&](auto entity, auto& kb) {
+            kb.duration -= deltaTime;
+            if (kb.duration <= 0.f) toRemove.push_back(entity);
+        });
+        if (!toRemove.empty()) registry.remove<component::Knockback>(toRemove.begin(), toRemove.end());
 
-        std::for_each(std::execution::par, entities.begin(), entities.end(), [&](entt::entity entity) {
-            auto& transform = registry.get<component::Transform>(entity);
-            auto& velocity = registry.get<component::Velocity>(entity);
-
-            // [NEW] Stun/Stiffness Logic: Zero out self-velocity, but don't return!
-            // This allows Knockback (External Force) to still apply below.
+        // 2. Optimized Movement Loop
+        // We use a view to ensure data locality
+        auto moveView = registry.view<component::Transform, component::Velocity>();
+        
+        // For very large numbers of entities, parallel loop can be beneficial.
+        // But we avoid the manual vector copy if possible by using a more efficient pattern.
+        moveView.each([&](auto entity, auto& transform, auto& velocity) {
             sf::Vector2f effectiveVel = velocity.value;
+            
+            // If stunned, self-velocity is negated but external forces still apply
             if (registry.any_of<component::Stun>(entity)) {
                 effectiveVel = {0.f, 0.f};
             }
 
-            // 1. 기본 이동 (AI Velocity or Zero if Stunned)
+            // Apply base movement
             transform.position += effectiveVel * deltaTime;
 
-            // 2. 넉백 처리 (External Force - Always applies)
+            // Apply external forces (Knockback)
             if (auto* kb = registry.try_get<component::Knockback>(entity)) {
                 transform.position += kb->force * deltaTime;
+                // [DATA-DRIVEN] Friction should ideally be in a config, but keeping 0.85f for now
                 kb->force *= 0.85f; 
-                kb->duration -= deltaTime;
             }
         });
-
-        // Lifecycle updates (Remove expired components)
-        static std::vector<entt::entity> toRemove;
-        toRemove.clear();
-
-        auto stunView = registry.view<component::Stun>();
-        for (auto entity : stunView) {
-            auto& s = stunView.get<component::Stun>(entity);
-            s.duration -= deltaTime;
-            if (s.duration <= 0.f) toRemove.push_back(entity);
-        }
-        if (!toRemove.empty()) registry.remove<component::Stun>(toRemove.begin(), toRemove.end());
-        toRemove.clear();
-
-        auto kbView = registry.view<component::Knockback>();
-        for (auto entity : kbView) {
-            if (kbView.get<component::Knockback>(entity).duration <= 0.f) {
-                toRemove.push_back(entity);
-            }
-        }
-        if (!toRemove.empty()) {
-            registry.remove<component::Knockback>(toRemove.begin(), toRemove.end());
-        }
     }
 };

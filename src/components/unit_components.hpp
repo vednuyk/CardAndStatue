@@ -3,6 +3,7 @@
 #include <SFML/Graphics/Rect.hpp>
 #include <memory>
 #include <string>
+#include <entt/entt.hpp>
 
 namespace component {
 
@@ -29,7 +30,39 @@ struct UnitStats {
     float damage{10.f};
     float attackSpeed{1.f}; // 초당 공격 횟수
     float attackRange{100.f};
+    float attackTimer{0.f};
     float hitFlashTimer{0.f};
+    
+    // [PHYSICS CONFIG] Resistance settings
+    bool isPushable{true};
+    bool isStunnable{true};
+};
+
+// [NEW] Physics Request for integrated Physics System
+struct PhysicsRequest {
+    enum class Type { KnockbackEffect, StunEffect, BothEffects };
+    Type type{Type::KnockbackEffect};
+    sf::Vector2f velocity{0.f, 0.f};
+    float duration{0.f};
+};
+
+// [NEW] Unified Damaged Event for decoupled combat logic
+struct DamagedEvent {
+    float damage{0.f};
+    float hitFlashTimer{0.f};
+    sf::Vector2f knockbackVelocity{0.f, 0.f};
+    float stunDuration{0.f};
+
+    void addDamage(float amt, float flashTime) {
+        damage += amt;
+        hitFlashTimer = std::max(hitFlashTimer, flashTime);
+    }
+    void addKnockback(sf::Vector2f vel) {
+        knockbackVelocity += vel;
+    }
+    void addStun(float dur) {
+        stunDuration = std::max(stunDuration, dur);
+    }
 };
 
 // 본진(Statue) 전용 능력치
@@ -69,6 +102,8 @@ struct GodRaySkill {
     float range{600.f};
     float stunDuration{0.5f};
     float remainingTime{10.f}; // [NEW] Total duration of the skill instance
+    float duration{10.f};       // Configured base duration
+    float passiveCooldown{5.f}; // [NEW] Cooldown when used in passive slot
     entt::entity owner{entt::null}; 
 };
 
@@ -96,6 +131,7 @@ struct RosarySkill {
     float radius{120.f};
     float duration{10.f};
     float remainingTime{0.f};
+    float passiveCooldown{5.f}; // [NEW] Cooldown when used in passive slot
 };
 
 struct OrbitalSphere {
@@ -125,7 +161,9 @@ enum class TextureID : uint8_t {
     Knight,
     FallbackRedSquare,
     RosarySphere,
+    RosaryGlow,
     GodRay,
+    GodRayAura,
     GodRayImpact,
     WhiteFlash,
     Count
@@ -149,6 +187,7 @@ struct SpriteData {
     sf::FloatRect textureRect; 
     sf::Vector2f scale{1.f, 1.f};
     bool flipX{false};
+    int renderLayer{0}; // [NEW] Explicit Z-order control
 };
 
 struct PlayerUnitTag {};
@@ -163,6 +202,26 @@ struct Target {
 struct Knockback {
     sf::Vector2f force{0.f, 0.f};
     float duration{0.f};
+};
+
+struct AIBehavior {
+    enum class Type {
+        None,
+        SeekStatue,    // Default for enemies: move towards Statue
+        DefendStatue,  // Move towards enemies near Statue
+        Passive,       // Don't move, just attack if in range
+        Berserker      // Seek nearest enemy anywhere
+    };
+    Type type{Type::None};
+    entt::entity target{entt::null};
+};
+
+struct FloatingText {
+    std::string text;
+    sf::Color color{sf::Color::White};
+    float duration{1.0f};
+    float timer{0.f};
+    sf::Vector2f velocity{0.f, -50.f};
 };
 
 // [NEW] 전역적으로 접근 가능한 성상(Statue)의 위치 (EnTT Context 전용)

@@ -16,6 +16,12 @@
 #include "systems/ai_system.hpp"
 #include "systems/localization_manager.hpp"
 #include "systems/animation_system.hpp"
+#include "systems/entity_physics_system.hpp"
+#include "systems/damage_processing_system.hpp"
+#include "systems/statue_passive_system.hpp"
+#include "systems/input_manager.hpp"
+#include "systems/ui_manager.hpp"
+#include "systems/vfx_system.hpp"
 
 static void updateView(sf::RenderWindow& window, sf::View& view) {
     sf::Vector2u size = window.getSize();
@@ -93,38 +99,104 @@ int main() {
     };
 
     createColoredTex(component::TextureID::FallbackRedSquare, {32, 32}, sf::Color::Red);
-    createColoredTex(component::TextureID::RosarySphere, {32, 32}, sf::Color::White, true);
     createColoredTex(component::TextureID::WhiteFlash, {32, 32}, sf::Color::White);
 
-    // [ENHANCED] GodRay: Procedural beam with gradients for a "Divine" look
+    // [NUN'S ROSARY] Layer 1: Solid Black Core with Gold Rim (Enlarged)
     {
-        sf::Vector2u size(128, 512);
+        sf::Vector2u size(32, 32); // Slightly larger canvas
         sf::Image img(size, sf::Color::Transparent);
+        sf::Vector2f center(16.f, 16.f);
+        float radius = 14.f; // Larger radius (10.0 -> 14.0)
         for (unsigned int y = 0; y < size.y; ++y) {
             for (unsigned int x = 0; x < size.x; ++x) {
-                // Horizontal gradient (center is bright but translucent)
-                float dx = (static_cast<float>(x) - size.x / 2.f) / (size.x / 2.f);
-                float horizontalAlpha = std::max(0.f, 1.f - std::abs(dx));
-                horizontalAlpha = std::pow(horizontalAlpha, 3.0f); // Softer, thinner beam edges
-
-                // Vertical gradient: Asymmetric fade (Sky at top is long fade, Head at bottom is sharp)
-                float dy = static_cast<float>(y) / size.y;
-                float verticalAlpha;
-                if (dy > 0.8f) {
-                    verticalAlpha = 1.0f;
-                } else {
-                    verticalAlpha = std::pow(dy / 0.8f, 2.0f);
+                float dx = static_cast<float>(x) - center.x;
+                float dy = static_cast<float>(y) - center.y;
+                float distSq = dx*dx + dy*dy;
+                if (distSq <= radius * radius) {
+                    float dist = std::sqrt(distSq);
+                    if (dist > 12.5f) {
+                        img.setPixel({x, y}, sf::Color(255, 235, 120)); // Stronger Gold Rim
+                    } else if (dx < -3.f && dy < -3.f) {
+                        img.setPixel({x, y}, sf::Color(70, 70, 70)); // Brighter highlight
+                    } else {
+                        img.setPixel({x, y}, sf::Color(5, 5, 5));
+                    }
                 }
+            }
+        }
+        auto tex = std::make_unique<sf::Texture>();
+        if (tex->loadFromImage(img)) {
+            tex->setSmooth(false); 
+            textureMap[component::TextureID::RosarySphere] = tex.get();
+            textureStorage.push_back(std::move(tex));
+        }
+    }
 
-                float finalAlpha = horizontalAlpha * verticalAlpha;
+    // [NUN'S ROSARY] Layer 2: Donut-style Holy Glow (Center is dark)
+    {
+        sf::Vector2u size(64, 64);
+        sf::Image img(size, sf::Color::Transparent);
+        sf::Vector2f center(32.f, 32.f);
+        float maxRadius = 30.f;
+        float innerVoidRadius = 8.f; // Darken center so the bead stands out
+        
+        for (unsigned int y = 0; y < size.y; ++y) {
+            for (unsigned int x = 0; x < size.x; ++x) {
+                float dx = static_cast<float>(x) - center.x;
+                float dy = static_cast<float>(y) - center.y;
+                float dist = std::sqrt(dx*dx + dy*dy);
                 
-                // Color: Golden-White center (Balanced for intensity and visibility)
+                if (dist < maxRadius) {
+                    // Alpha falloff starting from the rim of the bead
+                    float alphaFactor = 0.f;
+                    if (dist > innerVoidRadius) {
+                        alphaFactor = std::pow(1.f - ((dist - innerVoidRadius) / (maxRadius - innerVoidRadius)), 2.0f);
+                    } else {
+                        alphaFactor = 0.1f * (dist / innerVoidRadius); // Very dim inside
+                    }
+                    
+                    img.setPixel({x, y}, sf::Color(255, 200, 50, static_cast<uint8_t>(alphaFactor * 160)));
+                }
+            }
+        }
+        auto tex = std::make_unique<sf::Texture>();
+        if (tex->loadFromImage(img)) {
+            tex->setSmooth(true);
+            textureMap[component::TextureID::RosaryGlow] = tex.get();
+            textureStorage.push_back(std::move(tex));
+        }
+    }
+
+    // [ULTIMATE HYBRID] GodRay: Smooth Core with Micro Pixel Edges
+    {
+        sf::Vector2u size(128, 512); 
+        sf::Image img(size, sf::Color::Transparent);
+        
+        for (unsigned int y = 0; y < size.y; ++y) {
+            for (unsigned int x = 0; x < size.x; ++x) {
+                float dx = (static_cast<float>(x) - size.x / 2.f) / (size.x / 2.f);
+                float absDx = std::abs(dx);
+                
+                // Base smooth shape
+                float horizontalAlpha = std::pow(std::max(0.f, 1.f - absDx), 3.0f);
+                float dy = static_cast<float>(y) / size.y;
+                float verticalAlpha = (dy > 0.8f) ? 1.0f : std::pow(dy / 0.8f, 2.0f);
+                float rawAlpha = horizontalAlpha * verticalAlpha;
+
+                // [KEY CHANGE] Add micro-noise only near the edges (where rawAlpha is low)
+                // This creates a "sparkling pixel powder" effect on the periphery
+                float edgeFactor = std::clamp((1.0f - rawAlpha) * 2.0f, 0.f, 1.f);
+                float microNoise = ((x * 17 + y * 31) % 7 == 0) ? 0.04f * edgeFactor : 0.f;
+                
+                float finalAlpha = std::clamp(rawAlpha + microNoise, 0.f, 1.f);
+                
+                // [NEW] 64-step quantization for extreme smoothness with a "digital" hint
+                finalAlpha = std::floor(finalAlpha * 64.f) / 64.f;
+
                 sf::Color beamColor;
-                if (std::abs(dx) < 0.2f) {
-                    // Core: more solid golden white
+                if (absDx < 0.2f) {
                     beamColor = sf::Color(255, 255, 230, static_cast<uint8_t>(finalAlpha * 210));
                 } else {
-                    // Outer: strong glowing yellow
                     beamColor = sf::Color(255, 220, 50, static_cast<uint8_t>(finalAlpha * 230));
                 }
                 img.setPixel({x, y}, beamColor);
@@ -132,12 +204,13 @@ int main() {
         }
         auto tex = std::make_unique<sf::Texture>();
         if (tex->loadFromImage(img)) {
+            tex->setSmooth(false); // Sharp edges for micro-noise pixels
             textureMap[component::TextureID::GodRay] = tex.get();
             textureStorage.push_back(std::move(tex));
         }
     }
 
-    // [FINAL POLISH] GodRayImpact: Extremely soft, translucent golden glow
+    // [FINAL POLISH] GodRayImpact: Preserve the perfect smooth glow
     {
         sf::Vector2u size(256, 256);
         sf::Image img(size, sf::Color::Transparent);
@@ -151,11 +224,7 @@ int main() {
                 float dist = std::sqrt(dx*dx + dy*dy);
                 
                 if (dist < maxRadius) {
-                    // Ultra-soft exponential falloff (power 3.0) for a misty look
                     float alpha = std::pow(1.f - (dist / maxRadius), 3.0f);
-                    
-                    // Golden-Orange glow with very low base alpha
-                    // This ensures it looks like light hitting the ground, not a solid object
                     sf::Color color = sf::Color(255, 210, 50, static_cast<uint8_t>(alpha * 110)); 
                     img.setPixel({x, y}, color);
                 }
@@ -175,7 +244,7 @@ int main() {
     }
 
     entt::registry registry;
-    ui::CardSystem cardSystem(logicalRes);
+    ui::CardSystem cardSystem(logicalRes, configMgr);
     FPSDisplay fpsDisplay;
     WaveSystem waveSystem(configMgr.waves);
     auto enemyGrid = std::make_unique<ProximityGrid>();
@@ -202,105 +271,74 @@ int main() {
     langBtn.setOutlineThickness(2.f);
     langBtn.setPosition({logicalRes.x - btnSize.x - 20.f, logicalRes.y - btnSize.y - 20.f});
 
+    input::InputManager inputManager;
+    ui::UIManager uiManager;
+    sf::Vector2f dropZoneCenter = logicalRes / 2.f;
+
     while (window.isOpen()) {
         float deltaTime = deltaClock.restart().asSeconds();
         if (deltaTime > 0.05f) deltaTime = 0.05f;
         totalTime += deltaTime;
 
-        while (const std::optional event = window.pollEvent()) {
-            if (event->is<sf::Event::Closed>()) window.close();
-            if (event->getIf<sf::Event::Resized>()) syncViews(window);
+        // 1. Unified Input Handling
+        inputManager.update(window, uiView, gameView);
+        const auto& input = inputManager.getState();
 
-            if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
-                if (keyPressed->code == sf::Keyboard::Key::F11) {
-                    isFullscreen = !isFullscreen;
-                    window.create(isFullscreen ? sf::VideoMode::getDesktopMode() : sf::VideoMode({1280, 720}), 
-                                 "Earth Defense", sf::Style::Default, 
-                                 isFullscreen ? sf::State::Fullscreen : sf::State::Windowed, settings);
-                    window.setVerticalSyncEnabled(true);
-                    syncViews(window);
-                }
-            }
-
-            if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>()) {
-                if (mousePressed->button == sf::Mouse::Button::Left) {
-                    // [FIX] Convert pixel position to UI coordinates explicitly for button
-                    sf::Vector2f uiMousePos = window.mapPixelToCoords(mousePressed->position, uiView);
-                    if (sf::FloatRect(langBtn.getPosition(), langBtn.getSize()).contains(uiMousePos)) {
-                        LocalizationManager::getInstance().toggleLanguage();
-                    }
-                }
-            }
-
-            sf::Vector2f dummyDropZone;
-            cardSystem.handleEvent(*event, window, uiView, gameView, registry, dummyDropZone);
+        // 2. UI Context & Global Actions
+        if (input.windowResized) syncViews(window);
+        if (input.fullscreenToggled) {
+            isFullscreen = !isFullscreen;
+            window.create(isFullscreen ? sf::VideoMode::getDesktopMode() : sf::VideoMode({1280, 720}), 
+                         "Earth Defense", sf::Style::Default, 
+                         isFullscreen ? sf::State::Fullscreen : sf::State::Windowed, settings);
+            window.setVerticalSyncEnabled(true);
+            syncViews(window);
         }
 
-        // Logic Updates
-        enemyGrid->clear();
-        auto enemyView = registry.view<component::EnemyTag, component::Transform>();
-        enemyView.each([&](auto entity, auto& trans) {
-            enemyGrid->insert(entity, trans.position);
-        });
+        if (input.pauseToggled) {
+            if (uiManager.getCurrentState() == ui::UIState::PauseMenu) uiManager.popState();
+            else uiManager.pushState(ui::UIState::PauseMenu);
+        }
 
-        waveSystem.update(registry, deltaTime, center, configMgr);
-        AnimationSystem::update(registry, deltaTime);
-        float targetZoom = waveSystem.getCurrentWaveZoom();
-        currentZoom += (targetZoom - currentZoom) * deltaTime * 2.0f;
-        gameView.setSize(logicalRes * currentZoom);
+        auto currentUIState = uiManager.getCurrentState();
 
-        StatueSkillSystem::update(registry, deltaTime, *enemyGrid);
-        AISystem::update(registry, deltaTime, *enemyGrid); 
-        UnitCombatSystem::update(registry, deltaTime, *enemyGrid); 
-        UnitMovementSystem::update(registry, deltaTime);
-        fpsDisplay.update(deltaTime);
-        cardSystem.update(deltaTime, window, uiView);
-
-        auto applySkill = [&](const std::string& skillKey) {
-            auto cfg = configMgr.skills.rosary;
-            if (skillKey == "CARD_ROSARY") {
-                component::RosarySkill rosary;
-                rosary.damage = cfg.damage;
-                rosary.knockbackForce = cfg.knockbackForce;
-                rosary.rotationSpeed = cfg.rotationSpeed;
-                rosary.radius = cfg.radius;
-                rosary.duration = cfg.duration;
-                
-                StatueSkillSystem::applyRosary(registry, statue, rosary);
-            } else if (skillKey == "CARD_GOD_RAY") {
-                // Create a separate instance for GodRay to support STACKING and DURATION
-                auto instance = registry.create();
-                auto& gcfg = configMgr.skills.godRay;
-                auto& godRay = registry.emplace<component::GodRaySkill>(instance);
-                godRay.owner = statue;
-                godRay.cooldown = gcfg.cooldown;
-                godRay.damage = gcfg.damage;
-                godRay.range = gcfg.range;
-                godRay.stunDuration = 0.5f; 
-                godRay.remainingTime = 10.0f; // Default 10s duration if not in config
-                godRay.timer = gcfg.cooldown; // [IMMEDIATE]
-            } else if (skillKey == "CARD_HOLY") {
-                if (!registry.any_of<component::HolyAttackSkill>(statue)) {
-                    auto& hcfg = configMgr.skills.holy;
-                    auto& holy = registry.emplace<component::HolyAttackSkill>(statue);
-                    holy.cooldown = hcfg.cooldown;
-                    holy.damage = hcfg.damage;
-                    holy.radius = hcfg.radius;
-                    holy.timer = hcfg.cooldown; // [IMMEDIATE]
-                }
-            } else if (skillKey == "CARD_SPAWN_KNIGHT") {
-                if (!registry.any_of<component::SpawnKnightSkill>(statue)) {
-                    auto& scfg = configMgr.skills.spawnKnight;
-                    auto& spawn = registry.emplace<component::SpawnKnightSkill>(statue);
-                    spawn.cooldown = scfg.cooldown;
-                    spawn.spawnCount = scfg.spawnCount;
-                    spawn.timer = scfg.cooldown; // [IMMEDIATE]
-                }
+        if (input.isLeftPressed && currentUIState == ui::UIState::HUD) {
+            if (sf::FloatRect(langBtn.getPosition(), langBtn.getSize()).contains(input.mouseUIPos)) {
+                LocalizationManager::getInstance().toggleLanguage();
             }
-            };
+        }
+
+        // 3. Logic Updates (Only if not paused)
+        if (currentUIState != ui::UIState::PauseMenu) {
+            enemyGrid->clear();
+            auto enemyView = registry.view<component::EnemyTag, component::Transform>();
+            enemyView.each([&](auto entity, auto& trans) {
+                enemyGrid->insert(entity, trans.position);
+            });
+
+            waveSystem.update(registry, deltaTime, center, configMgr);
+            AnimationSystem::update(registry, deltaTime);
+            float targetZoom = waveSystem.getCurrentWaveZoom();
+            currentZoom += (targetZoom - currentZoom) * deltaTime * 2.0f;
+            gameView.setSize(logicalRes * currentZoom);
+
+            StatueSkillSystem::update(registry, deltaTime, *enemyGrid);
+            StatuePassiveSystem::update(registry, deltaTime, configMgr);
+            AISystem::update(registry, deltaTime, *enemyGrid); 
+            UnitCombatSystem::update(registry, deltaTime, *enemyGrid);
+            VFXSystem::update(registry, deltaTime); // [NEW] Catch DamagedEvents before clearing
+            DamageProcessingSystem::update(registry);
+            EntityPhysicsSystem::update(registry);
+            UnitMovementSystem::update(registry, deltaTime);
+        }
+
+        fpsDisplay.update(deltaTime);
+        cardSystem.updateInput(currentUIState, input, window, gameView, registry, dropZoneCenter);
+        cardSystem.update(deltaTime, input);
+
         if (cardSystem.consumePendingUse()) {
             std::string key = cardSystem.getLastUsedCardKey();
-            applySkill(key);
+            StatueSkillSystem::createSkillInstance(registry, statue, key, configMgr);
             cardSystem.removeCardUnderMouse();
         }
 
@@ -308,15 +346,11 @@ int main() {
             cardSystem.removeCardUnderMouse();
         }
 
-        auto passiveSkills = cardSystem.popTriggeredPassiveSkills();
-        for (const auto& skill : passiveSkills) {
-            applySkill(skill);
-        }
-
-        // Rendering
+        // 4. Rendering
         window.clear(sf::Color::Black);
         window.setView(gameView);
         RenderSystem::render(registry, window, textureMap, tileMap);
+        VFXSystem::render(registry, window, font); // [NEW] Render floating text
         
         cardSystem.render(registry, window, gameView, uiView, font, totalTime);
         
@@ -331,6 +365,22 @@ int main() {
         btnText.setOrigin({textBounds.position.x + textBounds.size.x / 2.f, textBounds.position.y + textBounds.size.y / 2.f});
         btnText.setPosition(langBtn.getPosition() + btnSize / 2.f);
         window.draw(btnText);
+
+        if (currentUIState == ui::UIState::PauseMenu) {
+            // Very simple pause overlay
+            sf::RectangleShape overlay(logicalRes);
+            overlay.setFillColor(sf::Color(0, 0, 0, 150));
+            window.draw(overlay);
+            
+            sf::Text pauseText(font);
+            pauseText.setString("PAUSED");
+            pauseText.setCharacterSize(64);
+            pauseText.setFillColor(sf::Color::White);
+            sf::FloatRect pBounds = pauseText.getLocalBounds();
+            pauseText.setOrigin({pBounds.position.x + pBounds.size.x / 2.f, pBounds.position.y + pBounds.size.y / 2.f});
+            pauseText.setPosition(logicalRes / 2.f);
+            window.draw(pauseText);
+        }
 
         window.setView(window.getDefaultView());
         fpsDisplay.draw(window);

@@ -181,17 +181,7 @@ int main() {
                 float horizontalAlpha = std::pow(std::max(0.f, 1.f - absDx), 3.0f);
                 float dy = static_cast<float>(y) / size.y;
                 float verticalAlpha = (dy > 0.8f) ? 1.0f : std::pow(dy / 0.8f, 2.0f);
-                float rawAlpha = horizontalAlpha * verticalAlpha;
-
-                // [KEY CHANGE] Add micro-noise only near the edges (where rawAlpha is low)
-                // This creates a "sparkling pixel powder" effect on the periphery
-                float edgeFactor = std::clamp((1.0f - rawAlpha) * 2.0f, 0.f, 1.f);
-                float microNoise = ((x * 17 + y * 31) % 7 == 0) ? 0.04f * edgeFactor : 0.f;
-                
-                float finalAlpha = std::clamp(rawAlpha + microNoise, 0.f, 1.f);
-                
-                // [NEW] 64-step quantization for extreme smoothness with a "digital" hint
-                finalAlpha = std::floor(finalAlpha * 64.f) / 64.f;
+                float finalAlpha = std::clamp(horizontalAlpha * verticalAlpha, 0.f, 1.f);
 
                 sf::Color beamColor;
                 if (absDx < 0.2f) {
@@ -204,7 +194,7 @@ int main() {
         }
         auto tex = std::make_unique<sf::Texture>();
         if (tex->loadFromImage(img)) {
-            tex->setSmooth(false); // Sharp edges for micro-noise pixels
+            tex->setSmooth(true); // Enable smoothing for pure, silky beam
             textureMap[component::TextureID::GodRay] = tex.get();
             textureStorage.push_back(std::move(tex));
         }
@@ -258,7 +248,7 @@ int main() {
         tileMap.setPosition({-2048.f + center.x, -2048.f + center.y}); 
     }
 
-    auto statue = EntityFactory::createStatue(registry, center, configMgr.statue);
+    auto statue = EntityFactory::createStatue(registry, center - sf::Vector2f(0.f, 20.f), configMgr.statue);
 
     float currentZoom = 1.0f;
     bool isFullscreen = true; 
@@ -274,7 +264,6 @@ int main() {
 
     input::InputManager inputManager;
     ui::UIManager uiManager;
-    sf::Vector2f dropZoneCenter = logicalRes / 2.f;
 
     while (window.isOpen()) {
         float deltaTime = deltaClock.restart().asSeconds();
@@ -340,14 +329,8 @@ int main() {
         }
 
         fpsDisplay.update(deltaTime);
-        cardSystem.updateInput(currentUIState, input, window, gameView, uiView, registry, dropZoneCenter);
+        cardSystem.updateInput(currentUIState, input, window, gameView, uiView, registry);
         cardSystem.update(deltaTime, input);
-
-        if (cardSystem.consumePendingUse()) {
-            std::string key = cardSystem.getLastUsedCardKey();
-            StatueSkillSystem::createSkillInstance(registry, statue, key, configMgr);
-            cardSystem.removeCardUnderMouse();
-        }
 
         if (cardSystem.consumePendingPassiveDrop()) {
             cardSystem.removeCardUnderMouse();

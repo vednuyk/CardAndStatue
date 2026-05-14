@@ -14,15 +14,16 @@
 - **Entity Component System (ECS):** Data (Components) and Logic (Systems) must remain separate. Avoid putting logic inside components.
 - **Single Responsibility:** Each system (e.g., `AISystem`, `RenderSystem`) should handle exactly one domain.
 - **Open/Closed Principle:** New skills and entity types should be added via new components and factory methods without modifying the core game loop.
-- **Modular Statue Skills:** 
-  - Skills must be independent and **pluggable**.
-  - **Activation Mechanism:** Skills are typically granted via the `CardSystem`. When a card is used/dropped on the Statue, the corresponding skill component (e.g., `GodRaySkill`) is attached to the Statue entity.
-  - **Autonomous Execution:** Once a component is attached, the `StatueSkillSystem` must automatically detect and process its logic without additional triggers.
-  - Apply skills by attaching components to the `Statue` entity or creating instance entities (like `RosarySkill`).
-  - Use `EntityFactory` for centralized creation.
-- **Unified Physics Architecture:** 
-  - All physics effects (Knockback, Stun, etc.) must be handled by `EnemyPhysicsSystem` via `PhysicsRequest` components.
-  - Skills should only request effects; the physics system decides how to apply them based on the target's resistances (`UnitStats`).
+- **Unified Combat & VFX Architecture:** 
+  - **Unified Damage Pipeline:** All damage sources must call `UnitCombatSystem::applyDamage` (Static Public). This method generates a `DamagedEvent` and handles **Global I-Frames (0.01s)** to prevent overlapping damage bugs.
+  - **DamageProcessingSystem:** The central authority for applying health changes and minimum damage (always >= 1) based on `DamagedEvent`.
+  - **Data-Driven VFX:** Use `vfxHeight` from `UnitStats` or `StatueStats` for all world-space indicators (damage numbers, bars).
+- **UI & Visual Integrity:**
+  - **Preservation First:** Never replace established high-fidelity rendering systems (e.g., `UISystem`) with raw implementations during refactoring.
+  - **Conditional World UI:** Statue HP Bar is shown only when damaged or recently hit (`hitFlashTimer > 0`). Unit HP Bars are hidden by default to reduce clutter.
+- **Robust Initialization:** 
+  - **Designated Initializers:** Always use `{ .member = value }` for component initialization (especially `StatueStats`) to prevent aggregate initialization errors when struct orders change.
+
 ---
 
 ## 🤖 Agent Operating Logic (Base Knowledge)
@@ -36,10 +37,11 @@ All agents must operate based on the following context hierarchy:
 ## ⚡ Optimization Guidelines
 - **Spatial Partitioning:** Always use `ProximityGrid` for nearby entity queries (AI, Combat, Skills). Never use O(N²) nested loops for distance checks.
 - **Cache Friendliness:** Utilize EnTT `view` and `group` for efficient iteration. Avoid `registry.get` inside tight loops if `registry.view<...>().each(...)` can be used.
-- **Math Optimization:** Use squared distance (`distSq`) instead of `sqrt` for range checks unless the actual distance value is required.
+- **Math Optimization:** 
+  - Use squared distance (`distSq`) instead of `sqrt` for range checks.
+  - **Interaction Buffer:** Add a small buffer (e.g., 5px) to attack ranges in `UnitCombatSystem` to account for AI stopping distances and prevent "near-miss" logical errors.
 - **Collision Standards:** Never use point-based collision for units. All interactions must use actual mathematical Collider calculations (Circle-to-Circle, Box-to-Box) based on `.json` radius/size.
 - **DeltaTime:** Always use `deltaTime` for frame-independent movement and timers. Note: `deltaTime` is capped at 0.05s in `main.cpp` to prevent "spiral of death".
-- **Asset Management:** Centralized via `ConfigManager` and texture maps in `main.cpp`. Avoid redundant disk I/O.
 
 ---
 
@@ -47,22 +49,21 @@ All agents must operate based on the following context hierarchy:
 1. **System Integrity:** Never modify existing systems in a way that disrupts core loops (Movement, Combat, Waves).
 2. **Independent Skills:** Statue skills must be implemented as modular units. Every combat skill should consider/implement:
    - **Cooldown:** Managed via a timer in the component.
-   - **Damage:** Applied to the target's `UnitStats`.
-   - **HitEffect:** Always set `hitFlashTimer = 0.1f` upon impact.
-   - **Knockback:** Apply displacement logic to the target's `Transform`.
-   - Implementation steps:
-     - Define a component in `unit_components.hpp`.
-     - Add update logic in `StatueSkillSystem.hpp`.
-     - Add a factory/apply method.
+   - **Damage:** Applied via `UnitCombatSystem::applyDamage`.
+   - **Feedback:** Use `DamagedEvent` for numbers and hit flashes.
+   - **Knockback:** Requested via `PhysicsRequest`.
 3. **Localization:** All UI strings must be retrieved via `LocalizationManager::getInstance().get("KEY")`.
-4. **Safety:** Rigorously check `registry.valid(entity)` before access, especially for parent/child relationships.
+4. **Safety:** Rigorously check `registry.valid(entity)` before access.
 5. **Clean Code:** Adhere to existing naming conventions (PascalCase for classes, camelCase for variables/methods, `component::` namespace for components).
-6. **Error Management:** Follow the guidelines in [ERRORMANAGEMENT.md](./ERRORMANAGEMENT.md) to maintain code integrity and prevent regression/deletion of existing features.
+6. **Error Management:** Follow the guidelines in [ERRORMANAGEMENT.md](./ERRORMANAGEMENT.md). **ABSOLUTE RULE: Never silently delete or regress existing features during refactoring.**
 
 ---
 
 ## 📁 Key Components & Systems
 - `ProximityGrid`: 64x64 fixed grid for O(1) cell access.
 - `StatueSkillSystem`: Manages Statue-specific active and passive skills.
+- `UnitCombatSystem`: The entry point for all combat interactions and I-Frame management.
+- `DamageProcessingSystem`: The final stage of the combat pipeline that applies stats.
+- `VFXSystem`: Data-driven visual effects (Floating numbers, etc.).
 - `EntityFactory`: The source of truth for creating players, enemies, and special entities.
 - `ConfigManager`: Loads JSON configs from `configs/`.

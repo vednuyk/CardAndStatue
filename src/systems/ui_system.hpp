@@ -130,7 +130,7 @@ private:
             const auto& card = *cardPtr;
             
             float scale = 1.0f + (card.hoverProgress * 0.6f); // [SCALE] Increased from 0.4 to 0.6 for 1.6x zoom
-            float lift = card.hoverProgress * 120.f; 
+            float lift = card.hoverProgress * 140.f; 
             float animatedRotation = card.rotation * (1.0f - card.hoverProgress);
 
             sf::Vector2f origin = {card.size.x / 2.f, card.size.y};

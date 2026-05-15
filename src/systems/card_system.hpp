@@ -58,7 +58,7 @@ public:
             for (auto& card : m_cards) {
                 if (card.isHovered) {
                     // [CENTER-PICKING] Snap visual center to mouse immediately
-                    float lift = card.hoverProgress * 120.f;
+                    float lift = card.hoverProgress * 140.f;
                     card.position = input.mouseUIPos - card.size / 2.f + sf::Vector2f(0.f, lift);
                     
                     card.isHovered = false;
@@ -104,7 +104,7 @@ public:
 
         if (m_draggedCard && input.isLeftDown) {
             // [CENTER-PICKING] Keep visual center at mouse position, accounting for dynamic lift
-            float lift = m_draggedCard->hoverProgress * 120.f;
+            float lift = m_draggedCard->hoverProgress * 140.f;
             m_draggedCard->position = input.mouseUIPos - m_draggedCard->size / 2.f + sf::Vector2f(0.f, lift);
         }
     }
@@ -122,17 +122,35 @@ public:
         Card* topHoveredCard = nullptr;
         if (!m_draggedCard) {
             float minScore = std::numeric_limits<float>::max();
-            for (auto& c : m_cards) {
-                // [STABLE-HOVER] Calculate hover using an expanded box that covers both base and lifted positions
-                float lift = 140.f; 
-                sf::FloatRect stableBox(c.position - sf::Vector2f(0.f, lift), c.size + sf::Vector2f(0.f, lift));
+            for (int i = (int)m_cards.size() - 1; i >= 0; --i) {
+                auto& c = m_cards[i];
+                // [OPTIMIZED-HOVER] Performance: O(N) where N is small (max ~10-15 cards)
+                float liftAmount = 140.f; 
+                float scaleFactor = 1.6f;
+                float extraWidth = (c.size.x * (scaleFactor - 1.0f)) / 2.f;
+                float extraHeight = c.size.y * (scaleFactor - 1.0f);
+
+                sf::FloatRect baseBox(c.position, c.size);
+                sf::FloatRect stableBox(
+                    sf::Vector2f(c.position.x - extraWidth, c.position.y - liftAmount - extraHeight),
+                    sf::Vector2f(c.size.x + (extraWidth * 2.f), c.size.y + liftAmount + extraHeight)
+                );
                 
-                if (stableBox.contains(input.mouseUIPos)) {
+                bool isInsideBase = baseBox.contains(input.mouseUIPos);
+                bool isInsideStable = stableBox.contains(input.mouseUIPos);
+                bool isInHitbox = c.isHovered ? isInsideStable : isInsideBase;
+
+                if (isInHitbox) {
                     sf::Vector2f baseCenter = c.position + c.size / 2.f;
                     sf::Vector2f diff = input.mouseUIPos - baseCenter;
                     float distSq = diff.x * diff.x + diff.y * diff.y;
+                    
+                    // [PRIORITY-BOOST] If mouse is inside the actual card body, give it a massive advantage
                     float score = distSq;
-                    if (c.isHovered) score *= 0.5f;
+                    if (isInsideBase) score *= 0.1f; 
+                    
+                    if (c.isHovered) score *= 0.8f; // Relaxed hysteresis (0.5 -> 0.8) for snappier switching
+                    
                     if (score < minScore) {
                         minScore = score;
                         topHoveredCard = &c;

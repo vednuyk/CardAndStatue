@@ -2,11 +2,23 @@
     "holy": {
         "cooldown": 5.0,
         "damage": 100.0,
-        "radius": 200.0
+        "radius": 200.0,
+        "levelStats": [
+            { "cooldown": 5.0, "damage": 100.0, "radius": 200.0 },
+            { "cooldown": 4.0, "damage": 150.0, "radius": 250.0 },
+            { "cooldown": 3.0, "damage": 250.0, "radius": 350.0 }
+        ],
+        "awakening": { "stunDuration": 1.0 }
     },
     "spawnKnight": {
         "cooldown": 10.0,
-        "spawnCount": 3
+        "spawnCount": 3,
+        "levelStats": [
+            { "cooldown": 10.0, "spawnCount": 3 },
+            { "cooldown": 8.0, "spawnCount": 5 },
+            { "cooldown": 5.0, "spawnCount": 8 }
+        ],
+        "awakening": { "isElite": true }
     },
     "rosary": {
         "damage": 5.0,
@@ -14,15 +26,27 @@
         "rotationSpeed": 3.0,
         "radius": 150.0,
         "duration": 10.0,
-        "passiveCooldown": 5.0
+        "passiveCooldown": 5.0,
+        "levelStats": [
+            { "damage": 5.0, "knockbackForce": 400.0, "rotationSpeed": 3.0, "radius": 150.0, "duration": 10.0, "passiveCooldown": 5.0 },
+            { "damage": 12.0, "knockbackForce": 500.0, "rotationSpeed": 4.5, "radius": 180.0, "duration": 12.0, "passiveCooldown": 4.0 },
+            { "damage": 30.0, "knockbackForce": 700.0, "rotationSpeed": 6.0, "radius": 220.0, "duration": 15.0, "passiveCooldown": 3.0 }
+        ],
+        "awakening": { "orbCountMultiplier": 2.0 }
     },
     "godRay": {
-        "cooldown": 1.0,
+        "attackInterval": 0.5,
         "damage": 10.0,
         "range": 700.0,
         "duration": 10.0,
         "passiveCooldown": 8.0,
         "knockbackForce": 1200.0,
-        "knockbackDuration": 0.10
+        "knockbackDuration": 0.10,
+        "levelStats": [
+            { "attackInterval": 0.5, "damage": 10.0, "range": 700.0, "duration": 10.0, "passiveCooldown": 8.0, "knockbackForce": 1200.0, "knockbackDuration": 0.10 },
+            { "attackInterval": 0.35, "damage": 25.0, "range": 850.0, "duration": 12.0, "passiveCooldown": 6.0, "knockbackForce": 1500.0, "knockbackDuration": 0.15 },
+            { "attackInterval": 0.2, "damage": 60.0, "range": 1000.0, "duration": 15.0, "passiveCooldown": 4.0, "knockbackForce": 2000.0, "knockbackDuration": 0.20 }
+        ],
+        "awakening": { "beamCount": 3 }
     }
 }

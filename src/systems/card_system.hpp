@@ -11,29 +11,9 @@
 #include "statue_passive_system.hpp"
 #include "input_manager.hpp"
 #include "ui_manager.hpp"
+#include "ui_types.hpp"
 
 namespace ui {
-
-struct Card {
-    std::string nameKey;
-    sf::Vector2f position;
-    sf::Vector2f size{80.f, 112.f};
-    float rotation = 0.f;
-    bool isDragging = false;
-    float hoverProgress = 0.f;
-    bool isHovered = false;
-    float dimProgress = 0.f; // New: 0.0 (bright) to 1.0 (dimmed)
-};
-
-struct PassiveSlot {
-    std::string cardNameKey;
-    sf::Vector2f position;
-    sf::Vector2f size{100.f, 140.f};
-    bool isOccupied = false;
-    float duration = 10.0f;
-    float cooldown = 5.0f;
-    float timer = 0.0f;
-};
 
 class CardSystem {
 public:
@@ -51,73 +31,146 @@ public:
         updateLayout();
     }
 
-    void updateInput(const ui::UIState currentUIState, const input::InputState& input, const sf::RenderWindow& window, const sf::View& gameView, const sf::View& uiView, const entt::registry& registry) {
+    void updateInput(const ui::UIState currentUIState, const input::InputState& input, const sf::RenderWindow& window, const sf::View& gameView, const sf::View& uiView, entt::registry& registry) {
         if (currentUIState != ui::UIState::HUD) return;
 
         if (input.isLeftPressed) {
+            // 1. Try to pick from Hand
             for (auto& card : m_cards) {
                 if (card.isHovered) {
-                    // [CENTER-PICKING] Snap visual center to mouse immediately
                     float lift = card.hoverProgress * 140.f;
                     card.position = input.mouseUIPos - card.size / 2.f + sf::Vector2f(0.f, lift);
-                    
                     card.isHovered = false;
                     card.isDragging = true;
                     m_draggedCard = &card;
-                    // No need for m_dragOffset as we always snap to center now
-                    break;
+                    m_draggedPassiveSlotIndex = -1;
+                    return;
+                }
+            }
+
+            // 2. Try to pick from Passive Slots
+            for (int i = 0; i < (int)m_passiveSlots.size(); ++i) {
+                auto& slot = m_passiveSlots[i];
+                if (slot.isOccupied && sf::FloatRect(slot.position, slot.size).contains(input.mouseUIPos)) {
+                    m_tempSlotData = slot; // Capture all data including level/exp
+                    m_draggedCardFromSlot = Card{slot.cardNameKey, input.mouseUIPos - sf::Vector2f(40.f, 56.f)};
+                    m_draggedCardFromSlot.size = {80.f, 112.f};
+                    m_draggedCardFromSlot.isDragging = true;
+                    m_draggedCard = &m_draggedCardFromSlot;
+                    m_draggedPassiveSlotIndex = i;
+                    
+                    slot.isOccupied = false;
+                    StatuePassiveSystem::syncPassivesFromSlots(m_passiveSlots, m_configMgr, registry);
+                    return;
                 }
             }
         }
 
         if (input.isLeftReleased && m_draggedCard) {
-            bool droppedInPassive = false;
-            for (auto& slot : m_passiveSlots) {
+            bool actionTaken = false;
+            for (int i = 0; i < (int)m_passiveSlots.size(); ++i) {
+                auto& slot = m_passiveSlots[i];
                 sf::FloatRect slotBounds(slot.position, slot.size);
-                if (slotBounds.contains(input.mouseUIPos) && !slot.isOccupied) {
-                    slot.cardNameKey = m_draggedCard->nameKey;
-                    slot.isOccupied = true;
-                    
-                    StatuePassiveSystem::addPassive(slot.cardNameKey, m_configMgr);
-                    
-                    if (slot.cardNameKey == "CARD_ROSARY") {
-                        slot.duration = m_configMgr.skills.rosary.duration;
-                        slot.cooldown = m_configMgr.skills.rosary.passiveCooldown;
-                    } else if (slot.cardNameKey == "CARD_GOD_RAY") {
-                        slot.duration = m_configMgr.skills.godRay.duration;
-                        slot.cooldown = m_configMgr.skills.godRay.passiveCooldown;
+                if (slotBounds.contains(input.mouseUIPos)) {
+                    // CASE A: Empty Slot - Move there
+                    if (!slot.isOccupied) {
+                        slot.cardNameKey = m_draggedCard->nameKey;
+                        slot.isOccupied = true;
+                        
+                        if (m_draggedPassiveSlotIndex == -1) {
+                            // From Hand: Set timer to max for immediate fire!
+                            slot.level = 1;
+                            slot.experience = 0;
+                            
+                            // Initialize timer based on Lv1 stats from config
+                            float duration = 10.f;
+                            float cooldown = 5.f;
+                            if (slot.cardNameKey == "CARD_ROSARY") {
+                                duration = m_configMgr.skills.rosary.levels[0].duration;
+                                cooldown = m_configMgr.skills.rosary.levels[0].passiveCooldown;
+                            } else if (slot.cardNameKey == "CARD_GOD_RAY") {
+                                duration = m_configMgr.skills.godRay.levels[0].duration;
+                                cooldown = m_configMgr.skills.godRay.levels[0].passiveCooldown;
+                            }
+                            slot.timer = duration + cooldown; 
+                            m_pendingPassiveDrop = true;
+                        } else {
+                            // Moved from another slot: Carry over timer and level
+                            slot.level = m_tempSlotData.level;
+                            slot.experience = m_tempSlotData.experience;
+                            slot.timer = m_tempSlotData.timer;
+                        }
+                        
+                        StatuePassiveSystem::syncPassivesFromSlots(m_passiveSlots, m_configMgr, registry);
+                        actionTaken = true;
+                    } 
+                    // CASE B: Occupied Slot - Try Merge
+                    else if (slot.cardNameKey == m_draggedCard->nameKey && slot.level < 3) {
+                        // [USER-REQUESTED] Phase-Aware Rescaling
+                        auto oldStats = StatuePassiveSystem::getSkillStats(slot.cardNameKey, slot.level, m_configMgr);
+                        
+                        // Merge!
+                        slot.experience++;
+                        bool leveledUp = false;
+                        if (slot.level == 1 && slot.experience >= 1) {
+                            slot.level = 2;
+                            slot.experience = 0;
+                            leveledUp = true;
+                        } else if (slot.level == 2 && slot.experience >= 2) {
+                            slot.level = 3;
+                            slot.experience = 0;
+                            leveledUp = true;
+                        }
+
+                        if (leveledUp) {
+                            auto newStats = StatuePassiveSystem::getSkillStats(slot.cardNameKey, slot.level, m_configMgr);
+                            
+                            if (slot.timer < oldStats.duration) {
+                                // Active Phase Rescale
+                                float progress = slot.timer / std::max(0.001f, oldStats.duration);
+                                slot.timer = progress * newStats.duration;
+                            } else {
+                                // Cooldown Phase Rescale
+                                float progress = (slot.timer - oldStats.duration) / std::max(0.001f, oldStats.cooldown);
+                                slot.timer = newStats.duration + (progress * newStats.cooldown);
+                            }
+                        }
+
+                        if (m_draggedPassiveSlotIndex == -1) {
+                            m_pendingPassiveDrop = true;
+                        }
+                        
+                        StatuePassiveSystem::syncPassivesFromSlots(m_passiveSlots, m_configMgr, registry);
+                        actionTaken = true;
                     }
-                    
-                    slot.timer = 0.f;
-                    m_pendingPassiveDrop = true;
-                    droppedInPassive = true;
                     break;
                 }
             }
 
-            if (!droppedInPassive) {
-                m_draggedCard->isDragging = false;
+            if (!actionTaken) {
+                if (m_draggedPassiveSlotIndex != -1) {
+                    // Return to original slot
+                    auto& slot = m_passiveSlots[m_draggedPassiveSlotIndex];
+                    slot = m_tempSlotData;
+                    slot.isOccupied = true;
+                    StatuePassiveSystem::syncPassivesFromSlots(m_passiveSlots, m_configMgr, registry);
+                } else {
+                    m_draggedCard->isDragging = false;
+                }
                 updateLayout();
             }
             m_draggedCard = nullptr;
+            m_draggedPassiveSlotIndex = -1;
         }
 
         if (m_draggedCard && input.isLeftDown) {
-            // [CENTER-PICKING] Keep visual center at mouse position, accounting for dynamic lift
-            float lift = m_draggedCard->hoverProgress * 140.f;
+            float lift = (m_draggedPassiveSlotIndex == -1) ? m_draggedCard->hoverProgress * 140.f : 0.f;
             m_draggedCard->position = input.mouseUIPos - m_draggedCard->size / 2.f + sf::Vector2f(0.f, lift);
         }
     }
 
     void update(float deltaTime, const input::InputState& input) {
-        for (auto& slot : m_passiveSlots) {
-            if (slot.isOccupied) {
-                slot.timer += deltaTime;
-                if (slot.timer >= (slot.duration + slot.cooldown)) {
-                    slot.timer = 0.f;
-                }
-            }
-        }
+        // [REMOVED] Timer updates moved to StatuePassiveSystem::update for single authority
 
         Card* topHoveredCard = nullptr;
         if (!m_draggedCard) {
@@ -213,12 +266,27 @@ public:
             bool isActive = false;
             float progress = 0.f;
             if (slot.isOccupied) {
-                if (slot.timer < slot.duration) {
+                // Get live stats for rendering
+                float duration = 10.f;
+                float cooldown = 5.f;
+                int lvIdx = std::clamp(slot.level - 1, 0, 2);
+
+                if (slot.cardNameKey == "CARD_ROSARY") {
+                    const auto& lv = m_configMgr.skills.rosary.levels[lvIdx];
+                    duration = lv.duration;
+                    cooldown = lv.passiveCooldown;
+                } else if (slot.cardNameKey == "CARD_GOD_RAY") {
+                    const auto& lv = m_configMgr.skills.godRay.levels[lvIdx];
+                    duration = lv.duration;
+                    cooldown = lv.passiveCooldown;
+                }
+
+                if (slot.timer < duration) {
                     isActive = true;
-                    progress = slot.timer / slot.duration;
+                    progress = slot.timer / duration;
                 } else {
                     isActive = false;
-                    progress = (slot.timer - slot.duration) / slot.cooldown;
+                    progress = (slot.timer - duration) / cooldown;
                 }
             }
             
@@ -229,11 +297,18 @@ public:
                 }
             }
 
-            passiveInfos.push_back({
-                slot.isOccupied ? l10n.get(slot.cardNameKey) : sf::String(""),
-                slot.position, slot.size, slot.isOccupied, isActive, progress,
-                isHighlighted
-            });
+            UISystem::PassiveSlotInfo info;
+            info.cardName = slot.isOccupied ? l10n.get(slot.cardNameKey) : sf::String("");
+            info.position = slot.position;
+            info.size = slot.size;
+            info.isOccupied = slot.isOccupied;
+            info.isActive = isActive;
+            info.progress = progress;
+            info.isHighlighted = isHighlighted;
+            info.level = slot.level;
+            info.experience = slot.experience;
+            
+            passiveInfos.push_back(info);
         }
         UISystem::renderAll(
             registry, 
@@ -263,6 +338,8 @@ public:
         m_cards.erase(std::remove_if(m_cards.begin(), m_cards.end(), [](const Card& c){ return c.isDragging; }), m_cards.end());
         updateLayout();
     }
+
+    std::vector<PassiveSlot>& getPassiveSlots() { return m_passiveSlots; }
 
     void updateLayout() {
         int n = static_cast<int>(m_cards.size());
@@ -306,10 +383,13 @@ public:
 
 private:
     sf::Vector2f m_logicalRes;
-    const config::ConfigManager& m_configMgr; // Keep member
+    const config::ConfigManager& m_configMgr; 
     std::vector<Card> m_cards;
     std::vector<PassiveSlot> m_passiveSlots;
     Card* m_draggedCard = nullptr;
+    Card m_draggedCardFromSlot; // Temporary card when dragging from slot
+    PassiveSlot m_tempSlotData; // Store old slot data before "hiding" it for dragging
+    int m_draggedPassiveSlotIndex = -1;
     sf::Vector2f m_dragOffset;
     bool m_pendingPassiveDrop = false;
     std::vector<std::string> m_triggeredPassiveSkills;

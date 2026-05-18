@@ -92,12 +92,14 @@ struct HolyAttackSkill {
     float timer{0.f};
     float damage{100.f};
     float radius{200.f};
+    int sourceSlotIndex{-1};
 };
 
 struct SpawnKnightSkill {
     float cooldown{10.f};
     float timer{0.f};
     int spawnCount{3};
+    int sourceSlotIndex{-1};
 };
 
 struct GodRaySkill {
@@ -110,6 +112,7 @@ struct GodRaySkill {
     float duration{10.f};       // Configured base duration
     float passiveCooldown{5.f}; // [NEW] Cooldown when used in passive slot
     entt::entity owner{entt::null}; 
+    int sourceSlotIndex{-1};
 };
 
 struct Stun {
@@ -137,6 +140,7 @@ struct RosarySkill {
     float duration{10.f};
     float remainingTime{0.f};
     float passiveCooldown{5.f}; // [NEW] Cooldown when used in passive slot
+    int sourceSlotIndex{-1};
 };
 
 struct OrbitalSphere {

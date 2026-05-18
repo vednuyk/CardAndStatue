@@ -92,6 +92,16 @@ private:
                 return;
             }
 
+            if (orbital.parentInstance != entt::null && registry.valid(orbital.parentInstance)) {
+                if (auto* parentSkill = registry.try_get<component::RosarySkill>(orbital.parentInstance)) {
+                    // [USER-REQUESTED] Sync stats in real-time from parent skill (which is updated by StatuePassiveSystem)
+                    orbital.damage = parentSkill->damage;
+                    orbital.knockbackForce = parentSkill->knockbackForce;
+                    orbital.radius = parentSkill->radius;
+                    orbital.rotationSpeed = parentSkill->rotationSpeed;
+                }
+            }
+
             if (orbital.parentInstance != entt::null && !registry.valid(orbital.parentInstance)) {
                 orbital.state = component::OrbitalSphere::State::Shrinking;
                 orbital.parentInstance = entt::null;

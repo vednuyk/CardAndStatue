@@ -21,49 +21,55 @@ public:
         GodRaySystem::update(registry, deltaTime, enemyGrid);
     }
 
-    static void createSkillInstance(entt::registry& registry, entt::entity statue, const std::string& skillKey, const config::ConfigManager& configMgr) {
+    static void createSkillInstance(entt::registry& registry, entt::entity statue, const std::string& skillKey, const config::ConfigManager& configMgr, int level = 1, int sourceSlotIndex = -1) {
+        int lvIdx = std::clamp(level - 1, 0, 2);
+
         if (skillKey == "CARD_ROSARY") {
-            auto& cfg = configMgr.skills.rosary;
+            const auto& lv = configMgr.skills.rosary.levels[lvIdx];
             component::RosarySkill rosary;
-            rosary.damage = cfg.damage;
-            rosary.knockbackForce = cfg.knockbackForce;
-            rosary.rotationSpeed = cfg.rotationSpeed;
-            rosary.radius = cfg.radius;
-            rosary.duration = cfg.duration;
-            rosary.passiveCooldown = cfg.passiveCooldown;
+            rosary.damage = lv.damage;
+            rosary.knockbackForce = lv.knockbackForce;
+            rosary.rotationSpeed = lv.rotationSpeed;
+            rosary.radius = lv.radius;
+            rosary.duration = lv.duration;
+            rosary.passiveCooldown = lv.passiveCooldown;
             rosary.owner = statue;
+            rosary.sourceSlotIndex = sourceSlotIndex;
             registry.emplace<component::RosarySkill>(registry.create(), rosary);
         } 
         else if (skillKey == "CARD_GOD_RAY") {
-            auto& gcfg = configMgr.skills.godRay;
+            const auto& lv = configMgr.skills.godRay.levels[lvIdx];
             auto& godRay = registry.emplace<component::GodRaySkill>(registry.create());
             godRay.owner = statue;
-            godRay.cooldown = gcfg.attackInterval;
-            godRay.damage = gcfg.damage;
-            godRay.range = gcfg.range;
+            godRay.cooldown = lv.attackInterval;
+            godRay.damage = lv.damage;
+            godRay.range = lv.range;
             godRay.stunDuration = 0.5f; 
-            godRay.duration = gcfg.duration;
-            godRay.passiveCooldown = gcfg.passiveCooldown;
+            godRay.duration = lv.duration;
+            godRay.passiveCooldown = lv.passiveCooldown;
             godRay.remainingTime = godRay.duration;
             godRay.timer = godRay.cooldown; 
+            godRay.sourceSlotIndex = sourceSlotIndex;
         } 
         else if (skillKey == "CARD_HOLY") {
             if (!registry.any_of<component::HolyAttackSkill>(statue)) {
-                auto& hcfg = configMgr.skills.holy;
+                const auto& lv = configMgr.skills.holy.levels[lvIdx];
                 auto& holy = registry.emplace<component::HolyAttackSkill>(statue);
-                holy.cooldown = hcfg.cooldown;
-                holy.damage = hcfg.damage;
-                holy.radius = hcfg.radius;
-                holy.timer = hcfg.cooldown;
+                holy.cooldown = lv.cooldown;
+                holy.damage = lv.damage;
+                holy.radius = lv.radius;
+                holy.timer = holy.cooldown;
+                holy.sourceSlotIndex = sourceSlotIndex;
             }
         } 
         else if (skillKey == "CARD_SPAWN_KNIGHT") {
             if (!registry.any_of<component::SpawnKnightSkill>(statue)) {
-                auto& scfg = configMgr.skills.spawnKnight;
+                const auto& lv = configMgr.skills.spawnKnight.levels[lvIdx];
                 auto& spawn = registry.emplace<component::SpawnKnightSkill>(statue);
-                spawn.cooldown = scfg.cooldown;
-                spawn.spawnCount = scfg.spawnCount;
-                spawn.timer = scfg.cooldown;
+                spawn.cooldown = lv.cooldown;
+                spawn.spawnCount = lv.spawnCount;
+                spawn.timer = spawn.cooldown;
+                spawn.sourceSlotIndex = sourceSlotIndex;
             }
         }
     }

@@ -33,11 +33,17 @@ struct SkillConfig {
         float cooldown = 5.0f;
         float damage = 100.0f;
         float radius = 200.0f;
+        struct LevelStats { float cooldown, damage, radius; };
+        std::vector<LevelStats> levels;
+        nlohmann::json awakening;
     } holy;
 
     struct SpawnKnight {
         float cooldown = 10.0f;
         int spawnCount = 3;
+        struct LevelStats { float cooldown; int spawnCount; };
+        std::vector<LevelStats> levels;
+        nlohmann::json awakening;
     } spawnKnight;
 
     struct Rosary {
@@ -45,18 +51,24 @@ struct SkillConfig {
         float knockbackForce = 150.0f;
         float rotationSpeed = 2.0f;
         float radius = 120.0f;
-        float duration = 10.0f;      // Skill active time
-        float passiveCooldown = 5.0f; // Recharge time in card slot
+        float duration = 10.0f;      
+        float passiveCooldown = 5.0f; 
+        struct LevelStats { float damage, knockbackForce, rotationSpeed, radius, duration, passiveCooldown; };
+        std::vector<LevelStats> levels;
+        nlohmann::json awakening;
     } rosary;
 
     struct GodRay {
-        float attackInterval = 0.5f; // Time between beams while active
+        float attackInterval = 0.5f; 
         float damage = 150.0f;
         float range = 600.0f;
-        float duration = 10.0f;      // How long the skill lasts
-        float passiveCooldown = 5.0f; // Recharge time in card slot
+        float duration = 10.0f;      
+        float passiveCooldown = 5.0f; 
         float knockbackForce = 80.0f;
         float knockbackDuration = 0.2f;
+        struct LevelStats { float attackInterval, damage, range, duration, passiveCooldown, knockbackForce, knockbackDuration; };
+        std::vector<LevelStats> levels;
+        nlohmann::json awakening;
     } godRay;
 };
 
@@ -179,12 +191,26 @@ private:
                 skills.holy.cooldown = h.value("cooldown", skills.holy.cooldown);
                 skills.holy.damage = h.value("damage", skills.holy.damage);
                 skills.holy.radius = h.value("radius", skills.holy.radius);
+                if (h.contains("levelStats")) {
+                    skills.holy.levels.clear();
+                    for (auto& lv : h["levelStats"]) {
+                        skills.holy.levels.push_back({ lv.value("cooldown", 0.f), lv.value("damage", 0.f), lv.value("radius", 0.f) });
+                    }
+                }
+                skills.holy.awakening = h.value("awakening", nlohmann::json::object());
             }
 
             if (j.contains("spawnKnight")) {
                 auto& s = j["spawnKnight"];
                 skills.spawnKnight.cooldown = s.value("cooldown", skills.spawnKnight.cooldown);
                 skills.spawnKnight.spawnCount = s.value("spawnCount", skills.spawnKnight.spawnCount);
+                if (s.contains("levelStats")) {
+                    skills.spawnKnight.levels.clear();
+                    for (auto& lv : s["levelStats"]) {
+                        skills.spawnKnight.levels.push_back({ lv.value("cooldown", 0.f), lv.value("spawnCount", 0) });
+                    }
+                }
+                skills.spawnKnight.awakening = s.value("awakening", nlohmann::json::object());
             }
 
             if (j.contains("rosary")) {
@@ -195,11 +221,21 @@ private:
                 skills.rosary.radius = r.value("radius", skills.rosary.radius);
                 skills.rosary.duration = r.value("duration", skills.rosary.duration);
                 skills.rosary.passiveCooldown = r.value("passiveCooldown", skills.rosary.passiveCooldown);
+                if (r.contains("levelStats")) {
+                    skills.rosary.levels.clear();
+                    for (auto& lv : r["levelStats"]) {
+                        skills.rosary.levels.push_back({ 
+                            lv.value("damage", 0.f), lv.value("knockbackForce", 0.f), 
+                            lv.value("rotationSpeed", 0.f), lv.value("radius", 0.f), 
+                            lv.value("duration", 0.f), lv.value("passiveCooldown", 0.f) 
+                        });
+                    }
+                }
+                skills.rosary.awakening = r.value("awakening", nlohmann::json::object());
             }
 
             if (j.contains("godRay")) {
                 auto& g = j["godRay"];
-                // Map "cooldown" from JSON to attackInterval to maintain compatibility but fix logic
                 skills.godRay.attackInterval = g.value("cooldown", skills.godRay.attackInterval); 
                 skills.godRay.damage = g.value("damage", skills.godRay.damage);
                 skills.godRay.range = g.value("range", skills.godRay.range);
@@ -207,6 +243,18 @@ private:
                 skills.godRay.passiveCooldown = g.value("passiveCooldown", skills.godRay.passiveCooldown);
                 skills.godRay.knockbackForce = g.value("knockbackForce", skills.godRay.knockbackForce);
                 skills.godRay.knockbackDuration = g.value("knockbackDuration", skills.godRay.knockbackDuration);
+                if (g.contains("levelStats")) {
+                    skills.godRay.levels.clear();
+                    for (auto& lv : g["levelStats"]) {
+                        skills.godRay.levels.push_back({ 
+                            lv.value("attackInterval", 0.f), lv.value("damage", 0.f), 
+                            lv.value("range", 0.f), lv.value("duration", 0.f), 
+                            lv.value("passiveCooldown", 0.f), lv.value("knockbackForce", 0.f), 
+                            lv.value("knockbackDuration", 0.f) 
+                        });
+                    }
+                }
+                skills.godRay.awakening = g.value("awakening", nlohmann::json::object());
             }
             return true;
         } catch (...) { return false; }

@@ -76,9 +76,9 @@ public:
 
 private:
     LocalizationManager() {
-        loadLanguage(Language::English); // Default
+        loadLanguage(Language::Korean); // Default
     }
 
-    Language m_currentLang = Language::English;
+    Language m_currentLang = Language::Korean;
     std::map<std::string, sf::String> m_data; // [OPTIMIZED] Store sf::String directly
 };

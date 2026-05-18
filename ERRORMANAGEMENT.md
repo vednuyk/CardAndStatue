@@ -32,7 +32,14 @@
 - **Cause:** Accidental deletion of `animation` block in JSON config.
 - **Solution:** Restored via Git, followed "JSON Data Preservation".
 
-### [2026-05-12] Rosary Clipping
-- **Issue:** Fast-moving beads skipped enemies.
-- **Cause:** `hitFlashTimer` was blocking all interactions.
-- **Solution:** Separated damage from knockback logic.
+### [2026-05-18] Circular Dependency (C2039 / C2065)
+- **Issue:** `StatuePassiveSystem` and `CardSystem` could not include each other, leading to "undefined identifier" and "is not a member of" errors.
+- **Cause:** Recursive header inclusion. `CardSystem` needed `StatuePassiveSystem` for sync calls, while `StatuePassiveSystem` needed `PassiveSlot` definitions from `CardSystem`.
+- **Solution:** Extracted shared UI structures (`Card`, `PassiveSlot`) into a standalone, leaf-level header: `src/systems/ui_types.hpp`.
+- **Prevention:** Always move shared data structures to independent type headers to break circular dependency chains.
+
+### [2026-05-18] Passive Timing Desync & Upgrade Lag
+- **Issue:** UI cooldown gauges were out of sync with actual skill firing, and upgrades during active phases felt "slow" or glitchy.
+- **Cause:** (1) Dual Timer Ownership: Both UI and logic systems were updating their own timers. (2) Stale stats in UI slots after merging.
+- **Solution:** (1) **Unified Timer Authority**: `CardSystem` owns the slots, but `StatuePassiveSystem` is the sole updater of timers. (2) **Proportional Rescaling**: When leveling up, the timer is rescaled by percentage to keep progress consistent across different cooldown lengths. (3) **Phase-Aware Rescaling**: Differentiating between 'Active' and 'Cooldown' phases during upgrade to ensure a snappy transition.
+- **Prevention:** Use a single source of truth for time-critical data and rescale by percentage when total cycle durations change.

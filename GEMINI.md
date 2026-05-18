@@ -21,6 +21,10 @@
 - **UI & Visual Integrity:**
   - **Preservation First:** Never replace established high-fidelity rendering systems (e.g., `UISystem`) with raw implementations during refactoring.
   - **Conditional World UI:** Statue HP Bar is shown only when damaged or recently hit (`hitFlashTimer > 0`). Unit HP Bars are hidden by default to reduce clutter.
+- **Skill Progression & Sync:**
+  - **Unified Timer Authority:** `CardSystem` (UI) owns the physical slots and timers, but `StatuePassiveSystem` (Logic) is the sole authority for incrementing them.
+  - **Proportional Phase-Rescaling:** When a card levels up (merges), its timer MUST be rescaled proportionally based on the current phase (Active or Cooldown) to ensure an intuitive and snappy transition.
+  - **Live Synchronization:** Active skill entities (Rosary, God Ray) must track their `sourceSlotIndex` to receive instant stat updates (damage, radius, etc.) when the originating card is upgraded.
 - **Robust Initialization:** 
   - **Designated Initializers:** Always use `{ .member = value }` for component initialization (especially `StatueStats`) to prevent aggregate initialization errors when struct orders change.
 

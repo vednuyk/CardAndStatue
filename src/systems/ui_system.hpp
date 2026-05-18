@@ -35,6 +35,8 @@ public:
         bool isActive;
         float progress; // 0.0 to 1.0
         bool isHighlighted; // New: For drag-over feedback
+        int level = 1;
+        int experience = 0;
     };
 
     static void renderAll(entt::registry& registry, sf::RenderTarget& target, const sf::View& worldView, 
@@ -87,9 +89,21 @@ private:
                 target.draw(shape);
             } else {
                 sf::Color baseColor = slot.isActive ? sf::Color(150, 255, 150) : sf::Color(180, 180, 180);
+                
+                // [AWAKENED] Level 3 visual feedback
+                if (slot.level >= 3) {
+                    float pulse = (std::sin(totalTime * 5.f) + 1.f) * 0.5f;
+                    baseColor = sf::Color(255, 215, 0, static_cast<std::uint8_t>(200 + pulse * 55)); // Golden
+                }
+
                 shape.setFillColor(baseColor);
                 shape.setOutlineThickness(slot.isActive ? 4.f : 2.f);
                 shape.setOutlineColor(slot.isActive ? sf::Color::Green : sf::Color::White);
+                
+                if (slot.level >= 3) {
+                    shape.setOutlineColor(sf::Color(255, 255, 150));
+                }
+
                 target.draw(shape);
 
                 if (!slot.isActive) {
@@ -99,7 +113,7 @@ private:
                     overlay.setFillColor(sf::Color(0, 0, 0, 200));
                     overlay.setScale({1.f, 1.f - slot.progress}); 
                     target.draw(overlay);
-                } else {
+                } else if (slot.level < 3) {
                     // Active pulse effect
                     float pulse = (std::sin(totalTime * 10.f) + 1.f) * 0.5f;
                     shape.setOutlineColor(sf::Color(0, 255, 0, static_cast<std::uint8_t>(150 + pulse * 105)));
@@ -114,6 +128,19 @@ private:
                 text.setOrigin({textBounds.position.x + textBounds.size.x / 2.f, textBounds.position.y + textBounds.size.y / 2.f});
                 text.setPosition(slot.position + slot.size / 2.f);
                 target.draw(text);
+
+                // [LEVEL-INDICATOR] Draw "1/2", "1/3", "1/5"
+                int targetExp = (slot.level == 1) ? 2 : (slot.level == 2 ? 3 : 5);
+                std::string levelStr = std::to_string(slot.experience + 1) + "/" + std::to_string(targetExp);
+                if (slot.level >= 3 && slot.experience >= 4) levelStr = "MAX";
+                
+                sf::Text lvText(font);
+                lvText.setString(levelStr);
+                lvText.setCharacterSize(14);
+                lvText.setFillColor(slot.level >= 3 ? sf::Color(100, 50, 0) : sf::Color::Blue);
+                lvText.setStyle(sf::Text::Bold);
+                lvText.setPosition(slot.position + sf::Vector2f(slot.size.x - 30.f, 5.f));
+                target.draw(lvText);
             }
         }
 

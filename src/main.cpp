@@ -319,7 +319,7 @@ int main() {
             gameView.setSize(logicalRes * currentZoom);
 
             StatueSkillSystem::update(registry, deltaTime, *enemyGrid);
-            StatuePassiveSystem::update(registry, deltaTime, configMgr);
+            StatuePassiveSystem::update(registry, deltaTime, configMgr, cardSystem.getPassiveSlots());
             AISystem::update(registry, deltaTime, *enemyGrid, *playerGrid); 
             UnitCombatSystem::update(registry, deltaTime, *enemyGrid, *playerGrid);
             VFXSystem::update(registry, deltaTime); // [NEW] Catch DamagedEvents before clearing
